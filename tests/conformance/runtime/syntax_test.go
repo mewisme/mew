@@ -6,18 +6,21 @@ import (
 )
 
 // --- Syntax/transform conformance ---
-// Every case exercises the production CLI path: m <entrypoint> against a
-// fixture project. No internal Go APIs are called directly for the behavior
-// being certified. Exit code 0 proves successful execution; content
-// verification uses file-based output (output.txt) where available.
+// Every case proves the runtime can transform and execute TypeScript
+// variants. Exit code 0 alone is insufficient; each test asserts
+// observable output (stdout or fixture output.txt).
 
 func TestConformanceHelloTS(t *testing.T) {
 	skipWithoutNode(t)
-	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	code, _ := runM(t, proj, "hello.ts")
+	ctx, cancel := deadline(t)
+	defer cancel()
+	code, out, _ := runMBinary(t, ctx, proj, "hello.ts")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(out, "hello from ts") {
+		t.Fatalf("expected 'hello from ts', got %q", out)
 	}
 }
 
@@ -37,21 +40,29 @@ func TestConformanceHelloTSX(t *testing.T) {
 
 func TestConformanceHelloMTS(t *testing.T) {
 	skipWithoutNode(t)
-	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	code, _ := runM(t, proj, "hello.mts")
+	ctx, cancel := deadline(t)
+	defer cancel()
+	code, out, _ := runMBinary(t, ctx, proj, "hello.mts")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(out, "hello from mts") {
+		t.Fatalf("expected 'hello from mts', got %q", out)
 	}
 }
 
 func TestConformanceHelloCTS(t *testing.T) {
 	skipWithoutNode(t)
-	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	code, _ := runM(t, proj, "hello.cts")
+	ctx, cancel := deadline(t)
+	defer cancel()
+	code, out, _ := runMBinary(t, ctx, proj, "hello.cts")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(out, "hello from cts") {
+		t.Fatalf("expected 'hello from cts', got %q", out)
 	}
 }
 
@@ -59,31 +70,43 @@ func TestConformanceHelloCTS(t *testing.T) {
 
 func TestConformanceHelloJS(t *testing.T) {
 	skipWithoutNode(t)
-	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	code, _ := runM(t, proj, "hello.js")
+	ctx, cancel := deadline(t)
+	defer cancel()
+	code, out, _ := runMBinary(t, ctx, proj, "hello.js")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(out, "hello from js") {
+		t.Fatalf("expected 'hello from js', got %q", out)
 	}
 }
 
 func TestConformanceHelloMJS(t *testing.T) {
 	skipWithoutNode(t)
-	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	code, _ := runM(t, proj, "hello.mjs")
+	ctx, cancel := deadline(t)
+	defer cancel()
+	code, out, _ := runMBinary(t, ctx, proj, "hello.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(out, "hello from mjs") {
+		t.Fatalf("expected 'hello from mjs', got %q", out)
 	}
 }
 
 func TestConformanceHelloCJS(t *testing.T) {
 	skipWithoutNode(t)
-	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	code, _ := runM(t, proj, "hello.cjs")
+	ctx, cancel := deadline(t)
+	defer cancel()
+	code, out, _ := runMBinary(t, ctx, proj, "hello.cjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(out, "hello from cjs") {
+		t.Fatalf("expected 'hello from cjs', got %q", out)
 	}
 }
 
@@ -124,6 +147,10 @@ func TestConformanceImportCJSToCTS(t *testing.T) {
 	code, _ := runM(t, proj, "import-cjs-to-cts.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	got := readOutput(t, proj)
+	if got != "resolved-dep-cts" {
+		t.Fatalf("expected 'resolved-dep-cts', got %q", got)
 	}
 }
 

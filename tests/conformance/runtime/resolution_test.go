@@ -11,7 +11,6 @@ func TestConformanceLoaderOrdinary(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// loader-log.mjs writes to output.txt on each resolve/load hook
 	code, _ := runM(t, proj, "--loader", "./loader-log.mjs", "hello.ts")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -26,7 +25,6 @@ func TestConformanceLoaderDelegating(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// loader-delegate.mjs chains to nextResolve/nextLoad
 	code, _ := runM(t, proj, "--loader", "./loader-delegate.mjs", "hello.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -41,7 +39,6 @@ func TestConformanceLoaderOrdering(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// Two loaders; both should be invoked and write to output.txt
 	code, _ := runM(t, proj,
 		"--loader", "./loader-order-a.mjs",
 		"--loader", "./loader-order-b.mjs",
@@ -60,7 +57,6 @@ func TestConformanceLoaderError(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// loader-error.mjs throws on load
 	code, out := runM(t, proj, "--loader", "./loader-error.mjs", "hello.js")
 	if code == 0 {
 		t.Fatalf("expected non-zero exit from loader error, got out=%s", out)
@@ -73,11 +69,25 @@ func TestConformanceTsconfigPaths(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "resolve-module-paths")
-	// This fixture has tsconfig.json with paths: @app/*, @utils/*, @lib
-	// The entrypoint is src/helpers.ts — just verify it can be executed
-	code, out := runM(t, proj, "src/helpers.ts")
+
+	// Write a script that imports via tsconfig path alias and verifies
+	// the resolved module is the expected one.
+	writeFile(t, proj, "verify-paths.mjs",
+		`import { writeFileSync } from "node:fs";
+try {
+  // Dynamic import to exercise tsconfig path alias resolution.
+  const mod = await import("@app/helpers");
+  writeFileSync("output.txt", "paths-ok:" + (mod.helper === true ? "yes" : "no"));
+} catch(e) {
+  writeFileSync("output.txt", "paths-error:" + e.message);
+}`)
+	code, _ := runM(t, proj, "verify-paths.mjs")
 	if code != 0 {
-		t.Fatalf("exit=%d out=%s", code, out)
+		t.Fatalf("exit=%d", code)
+	}
+	got := readOutput(t, proj)
+	if got != "paths-ok:yes" {
+		t.Fatalf("tsconfig paths resolution failed: %s", got)
 	}
 }
 
@@ -101,9 +111,13 @@ func TestConformancePnPSubpath(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e-pnp-subpath")
-	code, out := runM(t, proj, "app.mjs")
+	code, _ := runM(t, proj, "app.mjs")
 	if code != 0 {
-		t.Fatalf("exit=%d out=%s", code, out)
+		t.Fatalf("exit=%d", code)
+	}
+	got := readOutput(t, proj)
+	if !strings.Contains(got, "subpath:") {
+		t.Fatalf("expected 'subpath:...', got %q", got)
 	}
 }
 
@@ -111,27 +125,48 @@ func TestConformancePnPNested(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e-pnp-nested")
-	code, out := runM(t, proj, "app.mjs")
+	code, _ := runM(t, proj, "app.mjs")
 	if code != 0 {
-		t.Fatalf("exit=%d out=%s", code, out)
+		t.Fatalf("exit=%d", code)
+	}
+	got := readOutput(t, proj)
+	if !strings.Contains(got, "nested:") {
+		t.Fatalf("expected 'nested:...', got %q", got)
 	}
 }
 
 func TestConformancePnPMultiProjectIsolation(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
-	// Each project should only resolve its own .pnp.cjs dependencies.
-	// Run project-a.
+
+	// Each project must only resolve its own .pnp.cjs dependencies.
+	// Project A should resolve project-a-dep, project B project-b-dep.
 	projA := setupRuntimeFixture(t, "runtime-e2e-pnp-multi/project-a")
 	codeA, outA := runM(t, projA, "app.mjs")
 	if codeA != 0 {
 		t.Fatalf("project-a exit=%d out=%s", codeA, outA)
 	}
-	// Run project-b in separate temp dir.
+	gotA := readOutput(t, projA)
+	if !strings.Contains(gotA, "project-a") {
+		t.Fatalf("project-a expected 'project-a' in output, got %q", gotA)
+	}
+
 	projB := setupRuntimeFixture(t, "runtime-e2e-pnp-multi/project-b")
 	codeB, outB := runM(t, projB, "app.mjs")
 	if codeB != 0 {
 		t.Fatalf("project-b exit=%d out=%s", codeB, outB)
+	}
+	gotB := readOutput(t, projB)
+	if !strings.Contains(gotB, "project-b") {
+		t.Fatalf("project-b expected 'project-b' in output, got %q", gotB)
+	}
+
+	// Projects must NOT cross-resolve each other's dependencies.
+	if strings.Contains(gotA, "project-b") {
+		t.Fatalf("project-a leaked project-b dependency: %s", gotA)
+	}
+	if strings.Contains(gotB, "project-a") {
+		t.Fatalf("project-b leaked project-a dependency: %s", gotB)
 	}
 }
 
@@ -139,25 +174,31 @@ func TestConformancePnPMultiProjectIsolation(t *testing.T) {
 
 func TestConformanceMTSModuleFormat(t *testing.T) {
 	skipWithoutNode(t)
-	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
 	// .mts files always execute as ESM regardless of package type.
-	// The runtime-e2e fixture has no package.json (defaults to CJS for .js),
-	// but .mts must still work as ESM.
-	code, _ := runM(t, proj, "hello.mts")
+	ctx, cancel := deadline(t)
+	defer cancel()
+	code, out, _ := runMBinary(t, ctx, proj, "hello.mts")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(out, "hello from mts") {
+		t.Fatalf("expected 'hello from mts', got %q", out)
 	}
 }
 
 func TestConformanceCTSModuleFormat(t *testing.T) {
 	skipWithoutNode(t)
-	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// .cts files always execute as CJS regardless of package type
-	code, _ := runM(t, proj, "hello.cts")
+	// .cts files always execute as CJS regardless of package type.
+	ctx, cancel := deadline(t)
+	defer cancel()
+	code, out, _ := runMBinary(t, ctx, proj, "hello.cts")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	if !strings.Contains(out, "hello from cts") {
+		t.Fatalf("expected 'hello from cts', got %q", out)
 	}
 }
 
@@ -167,7 +208,6 @@ func TestConformanceDefaultExportTS(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// dep.cts is a CJS file that writes to output.txt via require('fs')
 	code, _ := runM(t, proj, "dep.cts")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)

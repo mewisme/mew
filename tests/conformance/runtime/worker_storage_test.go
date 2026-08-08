@@ -11,7 +11,6 @@ func TestConformanceWorkerImportsTS(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// worker-ts.mjs spawns a worker that imports worker-ts-task.mjs
 	code, _ := runM(t, proj, "worker-ts.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -26,13 +25,12 @@ func TestConformanceWorkerCredentialIsolation(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// worker-creds.mjs checks that worker threads cannot read transform credentials
 	code, _ := runM(t, proj, "worker-creds.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
 	}
 	got := readOutput(t, proj)
-	// Worker should see "absent" for transform credentials
+	// Worker should see "absent" for transform credentials.
 	if strings.Contains(got, "MEW_TRANSFORM_TOKEN=") && !strings.Contains(got, "MEW_TRANSFORM_TOKEN=absent") {
 		t.Fatalf("worker leaked transform credentials: %s", got)
 	}
@@ -42,10 +40,22 @@ func TestConformanceWorkerEnviron(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// worker-env.mjs checks env propagation to workers
 	code, _ := runM(t, proj, "worker-env.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
+	}
+	got := readOutput(t, proj)
+
+	// Credential isolation: transform variables must be absent.
+	for _, cred := range []string{"MEW_TRANSFORM_ENDPOINT", "MEW_TRANSFORM_TOKEN"} {
+		if strings.Contains(got, cred+"=") && !strings.Contains(got, cred+"=absent") {
+			t.Errorf("worker leaked %s: %s", cred, got)
+		}
+	}
+
+	// Env propagation: user-specified env must reach worker.
+	if !strings.Contains(got, "TEST_PROPAGATED=from-parent-env") {
+		t.Errorf("worker did not receive propagated env: %s", got)
 	}
 }
 
@@ -55,8 +65,6 @@ func TestConformanceChildProcessNoCreds(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// child-check.js spawns a child via spawnSync and verifies
-	// MEW_TRANSFORM_* are absent in the child environment.
 	code, _ := runM(t, proj, "child-check.js")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -82,7 +90,6 @@ func TestConformanceChildForkImportsTS(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// child-fork-ts.mjs forks a child that imports lib.ts.
 	code, _ := runM(t, proj, "child-fork-ts.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -97,8 +104,6 @@ func TestConformanceChildSpawnImportsTS(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// child-spawn-ts.mjs uses spawn(process.execPath, ...) to create
-	// a child that imports lib.ts.
 	code, _ := runM(t, proj, "child-spawn-ts.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -113,15 +118,12 @@ func TestConformanceChildForkCredentialIsolation(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// child-creds.mjs forks a child that probes env, argv, execArgv,
-	// and require.cache for credential leakage, AND imports lib.ts.
 	code, _ := runM(t, proj, "child-creds.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
 	}
 	got := readOutput(t, proj)
 
-	// Every credential-env probe must be "absent".
 	for _, line := range strings.Split(got, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -165,8 +167,6 @@ func TestConformanceChildNestedGrandchild(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// child-nested.mjs creates a child that creates a grandchild
-	// which imports lib.ts. Verifies propagation across generations.
 	code, _ := runM(t, proj, "child-nested.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -181,8 +181,6 @@ func TestConformanceChildNonNodeUnaffected(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// Spawn a non-Node child and verify MEW_TRANSFORM_* credentials
-	// are NOT injected into it.
 	writeFile(t, proj, "non-node-child.mjs",
 		`import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -205,8 +203,6 @@ func TestConformanceChildZeroAugNoInject(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// In --node mode (zero augmentation), child processes must NOT
-	// receive Mew runtime injection.
 	writeFile(t, proj, "zero-aug-child.mjs",
 		`import { fork } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -228,7 +224,6 @@ c.on('exit', function(code) {
   // output written by child task
 });
 `)
-	// Run with --node to disable augmentation.
 	code, _ := runM(t, proj, "--node", "zero-aug-child.mjs")
 	if code != 0 {
 		t.Fatalf("exit=%d", code)
@@ -251,7 +246,6 @@ c.on('exit', function(code) {
 func TestConformanceStorageBasicAPI(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
-	// The web-storage.cjs preload provides localStorage/sessionStorage
 	proj := setupRuntimeFixture(t, "runtime-e2e")
 	writeFile(t, proj, "storage-test.js",
 		`const fs = require("node:fs");
@@ -304,7 +298,6 @@ func TestConformanceExitCode(t *testing.T) {
 	skipWithoutNode(t)
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "1")
 	proj := setupRuntimeFixture(t, "runtime-e2e")
-	// exit-code.js calls process.exit(42)
 	code, _ := runM(t, proj, "exit-code.js")
 	if code != 42 {
 		t.Fatalf("expected exit=42, got exit=%d", code)
