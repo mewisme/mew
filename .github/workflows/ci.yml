@@ -1,15 +1,17 @@
 name: ci
 
-# Default gate. Runs on every push and pull request, and must stay
-# cheap enough to be a blocking check: formatting, static analysis, the unit
-# suite on Linux, a build, and one limited Windows smoke job for the
-# platform-specific behavior Linux cannot prove (paths, config, identity).
+# Default merge-blocking gate. Runs on every push and pull request.
+# Includes formatting, static analysis, the unit suite on Linux, a build,
+# one limited Windows smoke job for platform-specific behavior Linux cannot
+# prove (paths, config, identity), and runtime certification (3 OS × 4 Node
+# versions, exact-head SHA binding, fail-closed aggregate verdict).
 #
-# Everything heavy — the full three-OS matrix, race detector, cross
+# Everything else heavy — the full three-OS matrix, race detector, cross
 # compilation, lock conformance against real package managers, crash
-# integration, soak, benchmarks, certification, and govulncheck — lives in
-# `full.yml` and runs on a schedule, on demand, or for a release. Those suites
-# are not deleted, only removed from the blocking path.
+# integration, soak, benchmarks, core/runner/platform certification, and
+# govulncheck — lives in `full.yml` and runs on a schedule, on demand, or
+# for a release. Those suites are not deleted, only moved off the blocking
+# path.
 
 on:
   push:
@@ -156,6 +158,10 @@ jobs:
       - name: Doctor
         run: go run ./cmd/m --cwd fixtures/projects/mlock-greenfield doctor --json
 
+  runtime-cert:
+    name: runtime certification
+    uses: ./.github/workflows/runtime-cert.yml
+
   gate:
     name: gate
     runs-on: ubuntu-latest
@@ -164,6 +170,7 @@ jobs:
       - lint
       - test
       - smoke
+      - runtime-cert
     steps:
       - name: Verify required jobs
         shell: bash
@@ -172,7 +179,8 @@ jobs:
           for result in \
             "${{ needs.lint.result }}" \
             "${{ needs.test.result }}" \
-            "${{ needs.smoke.result }}"
+            "${{ needs.smoke.result }}" \
+            "${{ needs.runtime-cert.result }}"
           do
             [[ "$result" == success ]] || exit 1
           done
