@@ -30,7 +30,7 @@
       "id": "runtime-workers",
       "title": "Worker thread isolation, credential boundaries, child processes",
       "package": "./tests/conformance/runtime",
-      "run": "TestConformance(Worker|ChildProcess)",
+      "run": "TestConformance(Worker|Child)",
       "required": true,
       "platforms": ["linux", "darwin", "windows"]
     },
