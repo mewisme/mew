@@ -136,6 +136,28 @@ func TestParseInspectorFlagsZeroPort(t *testing.T) {
 	if cfg.Port != 0 {
 		t.Fatalf("port=%d, want 0", cfg.Port)
 	}
+	if !cfg.ExplicitPort {
+		t.Fatal("expected ExplicitPort=true for --inspect=0")
+	}
+	if !cfg.ExplicitBind {
+		t.Fatal("expected ExplicitBind=true for --inspect=0")
+	}
+}
+
+func TestParseInspectorFlagsInspectBrkZeroPort(t *testing.T) {
+	cfg, _, err := ParseInspectorFlags([]string{"--inspect-brk=0", "app.js"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mode != InspectorBrk {
+		t.Fatalf("mode=%s, want brk", cfg.Mode)
+	}
+	if cfg.Port != 0 {
+		t.Fatalf("port=%d, want 0", cfg.Port)
+	}
+	if !cfg.ExplicitPort {
+		t.Fatal("expected ExplicitPort=true for --inspect-brk=0")
+	}
 }
 
 func TestParseInspectorFlagsRemoteBind(t *testing.T) {
@@ -214,7 +236,7 @@ func TestParseInspectorFlagsMalformedHost(t *testing.T) {
 }
 
 func TestBuildInspectorArgvBare(t *testing.T) {
-	cfg := &InspectorConfig{Mode: InspectorRun, Host: "127.0.0.1", Port: 0, ExplicitBind: false}
+	cfg := &InspectorConfig{Mode: InspectorRun, Host: "127.0.0.1", Port: 0, ExplicitBind: false, ExplicitPort: false}
 	argv := cfg.BuildInspectorArgv()
 	if len(argv) != 1 || argv[0] != "--inspect" {
 		t.Fatalf("argv=%v, want [--inspect]", argv)
@@ -222,7 +244,7 @@ func TestBuildInspectorArgvBare(t *testing.T) {
 }
 
 func TestBuildInspectorArgvWithPort(t *testing.T) {
-	cfg := &InspectorConfig{Mode: InspectorRun, Host: "127.0.0.1", Port: 9229, ExplicitBind: true}
+	cfg := &InspectorConfig{Mode: InspectorRun, Host: "127.0.0.1", Port: 9229, ExplicitBind: true, ExplicitPort: true}
 	argv := cfg.BuildInspectorArgv()
 	if len(argv) != 1 || argv[0] != "--inspect=127.0.0.1:9229" {
 		t.Fatalf("argv=%v, want [--inspect=127.0.0.1:9229]", argv)
@@ -230,7 +252,7 @@ func TestBuildInspectorArgvWithPort(t *testing.T) {
 }
 
 func TestBuildInspectorArgvBrk(t *testing.T) {
-	cfg := &InspectorConfig{Mode: InspectorBrk, Host: "127.0.0.1", Port: 0, ExplicitBind: false}
+	cfg := &InspectorConfig{Mode: InspectorBrk, Host: "127.0.0.1", Port: 0, ExplicitBind: false, ExplicitPort: false}
 	argv := cfg.BuildInspectorArgv()
 	if len(argv) != 1 || argv[0] != "--inspect-brk" {
 		t.Fatalf("argv=%v, want [--inspect-brk]", argv)
@@ -238,10 +260,53 @@ func TestBuildInspectorArgvBrk(t *testing.T) {
 }
 
 func TestBuildInspectorArgvRemote(t *testing.T) {
-	cfg := &InspectorConfig{Mode: InspectorRun, Host: "0.0.0.0", Port: 9230, ExplicitBind: true}
+	cfg := &InspectorConfig{Mode: InspectorRun, Host: "0.0.0.0", Port: 9230, ExplicitBind: true, ExplicitPort: true}
 	argv := cfg.BuildInspectorArgv()
 	if len(argv) != 1 || argv[0] != "--inspect=0.0.0.0:9230" {
 		t.Fatalf("argv=%v, want [--inspect=0.0.0.0:9230]", argv)
+	}
+}
+
+func TestBuildInspectorArgvZeroPort(t *testing.T) {
+	// Explicit port 0 must be preserved in output.
+	cfg := &InspectorConfig{Mode: InspectorRun, Host: "127.0.0.1", Port: 0, ExplicitBind: true, ExplicitPort: true}
+	argv := cfg.BuildInspectorArgv()
+	if len(argv) != 1 || argv[0] != "--inspect=127.0.0.1:0" {
+		t.Fatalf("argv=%v, want [--inspect=127.0.0.1:0]", argv)
+	}
+}
+
+func TestBuildInspectorArgvZeroPortBrk(t *testing.T) {
+	cfg := &InspectorConfig{Mode: InspectorBrk, Host: "127.0.0.1", Port: 0, ExplicitBind: true, ExplicitPort: true}
+	argv := cfg.BuildInspectorArgv()
+	if len(argv) != 1 || argv[0] != "--inspect-brk=127.0.0.1:0" {
+		t.Fatalf("argv=%v, want [--inspect-brk=127.0.0.1:0]", argv)
+	}
+}
+
+func TestBuildInspectorArgvHostOnly(t *testing.T) {
+	// Explicit host, default port.
+	cfg := &InspectorConfig{Mode: InspectorRun, Host: "0.0.0.0", Port: 0, ExplicitBind: true, ExplicitPort: false}
+	argv := cfg.BuildInspectorArgv()
+	if len(argv) != 1 || argv[0] != "--inspect=0.0.0.0" {
+		t.Fatalf("argv=%v, want [--inspect=0.0.0.0]", argv)
+	}
+}
+
+func TestBuildInspectorArgvIPv6(t *testing.T) {
+	// IPv6 must use bracket notation in output.
+	cfg := &InspectorConfig{Mode: InspectorRun, Host: "::1", Port: 9229, ExplicitBind: true, ExplicitPort: true}
+	argv := cfg.BuildInspectorArgv()
+	if len(argv) != 1 || argv[0] != "--inspect=[::1]:9229" {
+		t.Fatalf("argv=%v, want [--inspect=[::1]:9229]", argv)
+	}
+}
+
+func TestBuildInspectorArgvIPv6DefaultPort(t *testing.T) {
+	cfg := &InspectorConfig{Mode: InspectorRun, Host: "::1", Port: 0, ExplicitBind: true, ExplicitPort: false}
+	argv := cfg.BuildInspectorArgv()
+	if len(argv) != 1 || argv[0] != "--inspect=[::1]" {
+		t.Fatalf("argv=%v, want [--inspect=[::1]]", argv)
 	}
 }
 
@@ -275,25 +340,41 @@ func TestIsLoopback(t *testing.T) {
 
 func TestParseInspectorAddr(t *testing.T) {
 	tests := []struct {
-		raw          string
-		wantHost     string
-		wantPort     int
-		wantExplicit bool
-		wantErr      bool
+		raw              string
+		wantHost         string
+		wantPort         int
+		wantExplicit     bool
+		wantExplicitPort bool
+		wantErr          bool
 	}{
-		{"", "127.0.0.1", 0, false, false},
-		{"9229", "127.0.0.1", 9229, true, false},
-		{"0", "127.0.0.1", 0, true, false},
-		{":9229", "127.0.0.1", 9229, true, false},
-		{"127.0.0.1:9229", "127.0.0.1", 9229, true, false},
-		{"0.0.0.0:9229", "0.0.0.0", 9229, true, false},
-		{"localhost:9229", "localhost", 9229, true, false},
-		{"::1:9229", "::1", 9229, true, false},
-		{"99999", "", 0, false, true},
-		{"127.0.0.1:99999", "", 0, false, true},
+		{"", "127.0.0.1", 0, false, false, false},
+		{"9229", "127.0.0.1", 9229, true, true, false},
+		{"0", "127.0.0.1", 0, true, true, false},
+		{":9229", "127.0.0.1", 9229, true, true, false},
+		{":0", "127.0.0.1", 0, true, true, false},
+		{"127.0.0.1:9229", "127.0.0.1", 9229, true, true, false},
+		{"127.0.0.1:0", "127.0.0.1", 0, true, true, false},
+		{"0.0.0.0:9229", "0.0.0.0", 9229, true, true, false},
+		{"localhost:9229", "localhost", 9229, true, true, false},
+		{"::1:9229", "::1", 9229, true, true, false},
+		{"::1:0", "::1", 0, true, true, false},
+		// Bracketed IPv6.
+		{"[::1]:9229", "::1", 9229, true, true, false},
+		{"[::1]:0", "::1", 0, true, true, false},
+		{"[::1]", "::1", 0, true, false, false},
+		{"[::]:9229", "::", 9229, true, true, false},
+		// Host only (no port).
+		{"127.0.0.1", "127.0.0.1", 0, true, false, false},
+		{"0.0.0.0", "0.0.0.0", 0, true, false, false},
+		// Errors.
+		{"99999", "", 0, false, false, true},
+		{"127.0.0.1:99999", "", 0, false, false, true},
+		{"[::1", "", 0, false, false, true},       // unmatched bracket
+		{"[::1]:", "", 0, false, false, true},      // trailing colon after bracket
+		{"[::1]garbage", "", 0, false, false, true}, // garbage after bracket
 	}
 	for _, tt := range tests {
-		host, port, explicit, err := parseInspectorAddr(tt.raw)
+		host, port, explicit, explicitPort, err := parseInspectorAddr(tt.raw)
 		if tt.wantErr {
 			if err == nil {
 				t.Errorf("parseInspectorAddr(%q): expected error", tt.raw)
@@ -312,6 +393,9 @@ func TestParseInspectorAddr(t *testing.T) {
 		}
 		if explicit != tt.wantExplicit {
 			t.Errorf("parseInspectorAddr(%q).explicit = %v, want %v", tt.raw, explicit, tt.wantExplicit)
+		}
+		if explicitPort != tt.wantExplicitPort {
+			t.Errorf("parseInspectorAddr(%q).explicitPort = %v, want %v", tt.raw, explicitPort, tt.wantExplicitPort)
 		}
 	}
 }

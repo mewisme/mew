@@ -23,10 +23,14 @@ type InspectorConfig struct {
 	Mode InspectorMode
 	// Host is the bind address (default "127.0.0.1").
 	Host string
-	// Port is the inspector port (0 means Node chooses ephemeral).
+	// Port is the inspector port. 0 means Node default (9229) unless
+	// ExplicitPort is true, in which case 0 means ephemeral allocation.
 	Port int
-	// ExplicitBind is true when the user explicitly specified host:port.
+	// ExplicitBind is true when the user explicitly specified host and/or port.
 	ExplicitBind bool
+	// ExplicitPort is true when the user explicitly specified a port value,
+	// including 0 (ephemeral). Distinguishes "default port" from "port 0".
+	ExplicitPort bool
 }
 
 // InspectorMode describes the inspector launch mode.
@@ -172,13 +176,14 @@ func ParseInspectorFlags(v8Args []string, zeroAugmentation bool) (*InspectorConf
 		addr = runAddr
 	}
 
-	host, port, explicit, err := parseInspectorAddr(addr)
+	host, port, explicit, explicitPort, err := parseInspectorAddr(addr)
 	if err != nil {
 		return nil, nil, err
 	}
 	cfg.Host = host
 	cfg.Port = port
 	cfg.ExplicitBind = explicit
+	cfg.ExplicitPort = explicitPort
 
 	// Security: non-loopback binds require explicit opt-in.
 	// Skip this check in --node mode to preserve native Node behavior.
@@ -212,58 +217,87 @@ func splitInspectorArg(arg string) (name, value string) {
 // parseInspectorAddr parses a Node inspector address value.
 // Format: [host]:port where both host and port are optional.
 // Empty string returns defaults.
-// IPv6 addresses are tried as bare addresses (Node inspector accepts "::1:9229"
-// where the last colon-separated segment is the port).
-func parseInspectorAddr(raw string) (host string, port int, explicit bool, err error) {
+// Accepts both bracketed ([::1]:9229) and bare (::1:9229) IPv6 forms.
+// Node inspector documentation uses bracket notation for IPv6.
+func parseInspectorAddr(raw string) (host string, port int, explicit bool, explicitPort bool, err error) {
 	if raw == "" {
-		return DefaultInspectorHost, DefaultInspectorPort, false, nil
+		return DefaultInspectorHost, DefaultInspectorPort, false, false, nil
 	}
 
 	explicit = true
 
-	// Special case: raw is just a port number (e.g., "9229")
+	// Special case: raw is just a port number (e.g., "9229" or "0").
 	if looksLikePort(raw) {
 		p, perr := parsePort(raw)
 		if perr != nil {
-			return "", 0, false, perr
+			return "", 0, false, false, perr
 		}
-		return DefaultInspectorHost, p, true, nil
+		explicitPort = true
+		return DefaultInspectorHost, p, true, true, nil
 	}
 
-	// Split host from port: find the last colon, check if the
-	// segment after it is a port number. This handles bare IPv6
-	// addresses like "::1:9229" (host=::1, port=9229) and
-	// "::" (host=::, port default).
-	lastColon := strings.LastIndex(raw, ":")
-	if lastColon >= 0 {
-		portPart := raw[lastColon+1:]
-		hostPart := raw[:lastColon]
-
-		// If the segment after the last colon looks like a port number,
-		// split there. Otherwise treat the whole thing as host.
-		if looksLikePort(portPart) && portPart != "" {
+	// Try bracketed IPv6 first: [::1]:9229, [::1], [::]:0.
+	if strings.HasPrefix(raw, "[") {
+		closeBracket := strings.Index(raw, "]")
+		if closeBracket < 0 {
+			return "", 0, false, false, apperr.New(apperr.InspectorHost, "runtime.inspect", raw,
+				fmt.Sprintf("invalid inspector address %q: unmatched bracket", raw))
+		}
+		host = raw[1:closeBracket]
+		rest := raw[closeBracket+1:]
+		if rest == "" {
+			// [::1] — host only, no port.
+		} else if strings.HasPrefix(rest, ":") {
+			portPart := rest[1:]
+			if portPart == "" {
+				return "", 0, false, false, apperr.New(apperr.InspectorPort, "runtime.inspect", raw,
+					fmt.Sprintf("invalid inspector address %q: trailing colon", raw))
+			}
 			p, perr := parsePort(portPart)
 			if perr != nil {
-				return "", 0, false, perr
+				return "", 0, false, false, perr
 			}
 			port = p
-			host = hostPart
+			explicitPort = true
+		} else {
+			return "", 0, false, false, apperr.New(apperr.InspectorHost, "runtime.inspect", raw,
+				fmt.Sprintf("invalid inspector address %q: garbage after bracket", raw))
+		}
+	} else {
+		// Split host from port: find the last colon, check if the
+		// segment after it is a port number. This handles bare IPv6
+		// addresses like "::1:9229" (host=::1, port=9229) and
+		// "::" (host=::, port default).
+		lastColon := strings.LastIndex(raw, ":")
+		if lastColon >= 0 {
+			portPart := raw[lastColon+1:]
+			hostPart := raw[:lastColon]
+
+			if looksLikePort(portPart) && portPart != "" {
+				p, perr := parsePort(portPart)
+				if perr != nil {
+					return "", 0, false, false, perr
+				}
+				port = p
+				explicitPort = true
+				host = hostPart
+			} else {
+				host = raw
+			}
 		} else {
 			host = raw
 		}
-	} else {
-		host = raw
-	}
 
-	// Leading colon means default host (e.g., ":9229").
-	if host == "" {
-		host = DefaultInspectorHost
+		// Leading colon means default host (e.g., ":9229").
+		if host == "" {
+			host = DefaultInspectorHost
+		}
 	}
 
 	// Validate host.
 	if host != "" && host != DefaultInspectorHost {
 		if err := validateHost(host); err != nil {
-			return "", 0, false, err
+			return "", 0, false, false, err
 		}
 	}
 
@@ -271,7 +305,7 @@ func parseInspectorAddr(raw string) (host string, port int, explicit bool, err e
 		host = DefaultInspectorHost
 	}
 
-	return host, port, explicit, nil
+	return host, port, explicit, explicitPort, nil
 }
 
 // looksLikePort reports whether s looks like a bare port number.
@@ -349,6 +383,13 @@ func checkDuplicateValues(flag string, values []string) error {
 
 // BuildInspectorArgv returns the normalized inspector argv for the config.
 // Returns nil when inspector is not active.
+//
+// Serialization rules:
+//   - Bare flag when no explicit bind: --inspect, --inspect-brk
+//   - Explicit port 0 preserved: --inspect=127.0.0.1:0
+//   - Explicit port: --inspect=127.0.0.1:9229
+//   - Explicit host only: --inspect=0.0.0.0
+//   - IPv6 addresses use bracket notation: --inspect=[::1]:9229
 func (cfg *InspectorConfig) BuildInspectorArgv() []string {
 	if cfg == nil || cfg.Mode == InspectorNone {
 		return nil
@@ -364,13 +405,31 @@ func (cfg *InspectorConfig) BuildInspectorArgv() []string {
 		return nil
 	}
 
-	if cfg.ExplicitBind || cfg.Port != 0 || cfg.Host != DefaultInspectorHost {
-		if cfg.Port != 0 {
-			flag += fmt.Sprintf("=%s:%d", cfg.Host, cfg.Port)
-		} else if cfg.Host != DefaultInspectorHost {
-			flag += fmt.Sprintf("=%s", cfg.Host)
-		}
+	if !cfg.ExplicitBind {
+		return []string{flag}
+	}
+
+	host := cfg.Host
+	// Use bracket notation for IPv6 addresses.
+	if needsIPv6Brackets(host) {
+		host = "[" + host + "]"
+	}
+
+	if cfg.ExplicitPort {
+		flag += fmt.Sprintf("=%s:%d", host, cfg.Port)
+	} else {
+		flag += fmt.Sprintf("=%s", host)
 	}
 
 	return []string{flag}
+}
+
+// needsIPv6Brackets reports whether host is an IPv6 address that should be
+// bracketed in a host:port string to avoid ambiguity.
+func needsIPv6Brackets(host string) bool {
+	if host == "" {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.To4() == nil
 }
