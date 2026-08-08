@@ -19,10 +19,10 @@ import (
 
 // runtimeBenchResult is the structured output for m benchmark runtime --json.
 type runtimeBenchResult struct {
-	SchemaVersion int                    `json:"schemaVersion"`
-	Packages      []string               `json:"packages"`
-	Cold          bool                   `json:"cold"`
-	Environment   runtimeBenchEnv        `json:"environment"`
+	SchemaVersion int                     `json:"schemaVersion"`
+	Packages      []string                `json:"packages"`
+	Cold          bool                    `json:"cold"`
+	Environment   runtimeBenchEnv         `json:"environment"`
 	Results       []runtimeBenchPkgResult `json:"results"`
 }
 

@@ -192,4 +192,3 @@ func renderHumanTrace(cmd *cobra.Command, events <-chan trace.Event, sessionID s
 	}
 	return writeStaticOut(cmd, out)
 }
-

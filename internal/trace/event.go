@@ -90,14 +90,14 @@ const (
 
 // Watch events.
 const (
-	TypeWatchStart        EventType = "watch.start"
-	TypeWatchRestart      EventType = "watch.restart"
-	TypeWatchInvalidate   EventType = "watch.invalidate"
-	TypeWatchBackend      EventType = "watch.backend"
-	TypeWatchChildStart   EventType = "watch.child_start"
-	TypeWatchChildExit    EventType = "watch.child_exit"
-	TypeWatchShutdown     EventType = "watch.shutdown"
-	TypeWatchError        EventType = "watch.error"
+	TypeWatchStart      EventType = "watch.start"
+	TypeWatchRestart    EventType = "watch.restart"
+	TypeWatchInvalidate EventType = "watch.invalidate"
+	TypeWatchBackend    EventType = "watch.backend"
+	TypeWatchChildStart EventType = "watch.child_start"
+	TypeWatchChildExit  EventType = "watch.child_exit"
+	TypeWatchShutdown   EventType = "watch.shutdown"
+	TypeWatchError      EventType = "watch.error"
 )
 
 // Event is a single structured trace event.
@@ -115,13 +115,13 @@ type Event struct {
 
 // LifecycleData is the payload for lifecycle events.
 type LifecycleData struct {
-	Entrypoint    string `json:"entrypoint,omitempty"`
-	NodeVersion   string `json:"node_version,omitempty"`
-	Augmented     bool   `json:"augmented,omitempty"`
-	DurationMs    int64  `json:"duration_ms,omitempty"`
-	ExitCode      *int   `json:"exit_code,omitempty"`
-	ErrorCode     string `json:"error_code,omitempty"`
-	ErrorMessage  string `json:"error_message,omitempty"`
+	Entrypoint   string `json:"entrypoint,omitempty"`
+	NodeVersion  string `json:"node_version,omitempty"`
+	Augmented    bool   `json:"augmented,omitempty"`
+	DurationMs   int64  `json:"duration_ms,omitempty"`
+	ExitCode     *int   `json:"exit_code,omitempty"`
+	ErrorCode    string `json:"error_code,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
 	// Inspector fields are populated when --inspect or --inspect-brk is active.
 	InspectorMode string `json:"inspector_mode,omitempty"` // "run" or "brk"
 	InspectorHost string `json:"inspector_host,omitempty"` // sanitized bind address

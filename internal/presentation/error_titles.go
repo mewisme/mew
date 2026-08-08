@@ -63,4 +63,8 @@ var errorTitles = map[apperr.Code]string{
 	apperr.EnvFileNotFound:          "Environment file not found",
 	apperr.EnvFileRead:              "Environment file is not readable",
 	apperr.EnvFileParse:             "Environment file is malformed",
+	apperr.InspectorBind:            "Inspector failed to bind to address",
+	apperr.InspectorPort:            "Inspector port is not valid",
+	apperr.InspectorHost:            "Inspector host is not valid",
+	apperr.InspectorDup:             "Duplicate inspector flag",
 }

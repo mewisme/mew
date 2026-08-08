@@ -25,27 +25,27 @@ const (
 type CacheReasonCode string
 
 const (
-	ReasonHit               CacheReasonCode = "hit"
-	ReasonMissEntryAbsent   CacheReasonCode = "miss-entry-absent"
-	ReasonKeyMismatch       CacheReasonCode = "key-mismatch"
-	ReasonSchemaMismatch    CacheReasonCode = "schema-mismatch"
-	ReasonSourceMismatch    CacheReasonCode = "source-mismatch"
-	ReasonOptionsMismatch   CacheReasonCode = "options-mismatch"
-	ReasonConfigMismatch    CacheReasonCode = "config-mismatch"
-	ReasonFormatMismatch    CacheReasonCode = "format-mismatch"
-	ReasonMapModeMismatch   CacheReasonCode = "map-mode-mismatch"
-	ReasonMetaMalformed     CacheReasonCode = "meta-malformed"
-	ReasonCodeMissing       CacheReasonCode = "code-missing"
-	ReasonMapMissing        CacheReasonCode = "map-missing"
-	ReasonDigestMismatch    CacheReasonCode = "digest-mismatch"
-	ReasonOutputMismatch    CacheReasonCode = "output-mismatch"
-	ReasonOrphanMeta        CacheReasonCode = "orphan-meta"
-	ReasonOrphanFile        CacheReasonCode = "orphan-file"
-	ReasonUnreadableMeta    CacheReasonCode = "unreadable-meta"
-	ReasonUnreadableCode    CacheReasonCode = "unreadable-code"
-	ReasonUnreadableMap     CacheReasonCode = "unreadable-map"
-	ReasonStatError         CacheReasonCode = "stat-error"
-	ReasonReadError         CacheReasonCode = "read-error"
+	ReasonHit             CacheReasonCode = "hit"
+	ReasonMissEntryAbsent CacheReasonCode = "miss-entry-absent"
+	ReasonKeyMismatch     CacheReasonCode = "key-mismatch"
+	ReasonSchemaMismatch  CacheReasonCode = "schema-mismatch"
+	ReasonSourceMismatch  CacheReasonCode = "source-mismatch"
+	ReasonOptionsMismatch CacheReasonCode = "options-mismatch"
+	ReasonConfigMismatch  CacheReasonCode = "config-mismatch"
+	ReasonFormatMismatch  CacheReasonCode = "format-mismatch"
+	ReasonMapModeMismatch CacheReasonCode = "map-mode-mismatch"
+	ReasonMetaMalformed   CacheReasonCode = "meta-malformed"
+	ReasonCodeMissing     CacheReasonCode = "code-missing"
+	ReasonMapMissing      CacheReasonCode = "map-missing"
+	ReasonDigestMismatch  CacheReasonCode = "digest-mismatch"
+	ReasonOutputMismatch  CacheReasonCode = "output-mismatch"
+	ReasonOrphanMeta      CacheReasonCode = "orphan-meta"
+	ReasonOrphanFile      CacheReasonCode = "orphan-file"
+	ReasonUnreadableMeta  CacheReasonCode = "unreadable-meta"
+	ReasonUnreadableCode  CacheReasonCode = "unreadable-code"
+	ReasonUnreadableMap   CacheReasonCode = "unreadable-map"
+	ReasonStatError       CacheReasonCode = "stat-error"
+	ReasonReadError       CacheReasonCode = "read-error"
 )
 
 // CacheReason is a single structured explanation of a cache disposition.
@@ -57,13 +57,13 @@ type CacheReason struct {
 
 // CacheEntryExplain describes the disposition of a single cache entry.
 type CacheEntryExplain struct {
-	Key         string             `json:"key"`
-	Disposition CacheDisposition   `json:"disposition"`
-	Reasons     []CacheReason      `json:"reasons,omitempty"`
-	SchemaVer   int                `json:"schemaVersion,omitempty"`
-	CodeSize    int64              `json:"codeBytes,omitempty"`
-	MapSize     int64              `json:"mapBytes,omitempty"`
-	MetaSize    int64              `json:"metaBytes,omitempty"`
+	Key         string           `json:"key"`
+	Disposition CacheDisposition `json:"disposition"`
+	Reasons     []CacheReason    `json:"reasons,omitempty"`
+	SchemaVer   int              `json:"schemaVersion,omitempty"`
+	CodeSize    int64            `json:"codeBytes,omitempty"`
+	MapSize     int64            `json:"mapBytes,omitempty"`
+	MetaSize    int64            `json:"metaBytes,omitempty"`
 }
 
 // CacheExplainOptions configures the cache explain diagnostic.

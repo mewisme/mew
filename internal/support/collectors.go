@@ -42,10 +42,10 @@ type NodeDTO struct {
 
 // FeaturesDTO is the support-safe features summary entry.
 type FeaturesDTO struct {
-	SchemaVersion   int            `json:"schema_version"`
-	SchemaVersionRef string        `json:"schema_version_ref,omitempty"`
-	Total           int            `json:"total"`
-	ByStatus        map[string]int `json:"by_status"`
+	SchemaVersion    int            `json:"schema_version"`
+	SchemaVersionRef string         `json:"schema_version_ref,omitempty"`
+	Total            int            `json:"total"`
+	ByStatus         map[string]int `json:"by_status"`
 }
 
 // DoctorDTO is the support-safe doctor entry (reuses app.DoctorReport shape).
@@ -78,8 +78,8 @@ type ConfigMetaDTO struct {
 // VersionCollector gathers Mew version and build information.
 type VersionCollector struct{}
 
-func (VersionCollector) Name() string     { return "version.json" }
-func (VersionCollector) Required() bool   { return true }
+func (VersionCollector) Name() string   { return "version.json" }
+func (VersionCollector) Required() bool { return true }
 
 func (VersionCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, error) {
 	dto := VersionDTO{
@@ -97,8 +97,8 @@ func (VersionCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, e
 // OSCollector gathers host OS and architecture information.
 type OSCollector struct{}
 
-func (OSCollector) Name() string     { return "os.json" }
-func (OSCollector) Required() bool   { return true }
+func (OSCollector) Name() string   { return "os.json" }
+func (OSCollector) Required() bool { return true }
 
 func (OSCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, error) {
 	dto := OSDTO{
@@ -113,8 +113,8 @@ func (OSCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, error)
 // NodeCollector gathers Node version and capability information.
 type NodeCollector struct{}
 
-func (NodeCollector) Name() string     { return "node.json" }
-func (NodeCollector) Required() bool   { return false }
+func (NodeCollector) Name() string   { return "node.json" }
+func (NodeCollector) Required() bool { return false }
 
 func (NodeCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, error) {
 	dto := NodeDTO{SchemaVersion: 1}
@@ -133,8 +133,8 @@ func (NodeCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, erro
 // FeaturesCollector gathers the feature inventory summary.
 type FeaturesCollector struct{}
 
-func (FeaturesCollector) Name() string     { return "features.json" }
-func (FeaturesCollector) Required() bool   { return false }
+func (FeaturesCollector) Name() string   { return "features.json" }
+func (FeaturesCollector) Required() bool { return false }
 
 func (FeaturesCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, error) {
 	dto := FeaturesDTO{SchemaVersion: 1, ByStatus: map[string]int{}}
@@ -155,8 +155,8 @@ func (FeaturesCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, 
 // DoctorCollector gathers the runtime doctor report.
 type DoctorCollector struct{}
 
-func (DoctorCollector) Name() string     { return "doctor.json" }
-func (DoctorCollector) Required() bool   { return false }
+func (DoctorCollector) Name() string   { return "doctor.json" }
+func (DoctorCollector) Required() bool { return false }
 
 func (DoctorCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, error) {
 	dto := DoctorDTO{SchemaVersion: 1}
@@ -176,8 +176,8 @@ func (DoctorCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, er
 			ID:          c.ID,
 			Status:      c.Status,
 			Message:     SanitizeString(c.Message),
-				Details:     SanitizeString(c.Details),
-				Remediation: c.Remediation,
+			Details:     SanitizeString(c.Details),
+			Remediation: c.Remediation,
 		})
 	}
 	return json.Marshal(dto)
@@ -186,8 +186,8 @@ func (DoctorCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, er
 // ConfigMetaCollector gathers sanitized config metadata.
 type ConfigMetaCollector struct{}
 
-func (ConfigMetaCollector) Name() string     { return "config.json" }
-func (ConfigMetaCollector) Required() bool   { return false }
+func (ConfigMetaCollector) Name() string   { return "config.json" }
+func (ConfigMetaCollector) Required() bool { return false }
 
 func (ConfigMetaCollector) Collect(ctx context.Context, ac *app.Context) ([]byte, error) {
 	dto := ConfigMetaDTO{SchemaVersion: 1}

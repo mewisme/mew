@@ -596,8 +596,8 @@ type fakeCollector struct {
 	failWith error
 }
 
-func (f *fakeCollector) Name() string                               { return f.name }
-func (f *fakeCollector) Required() bool                             { return f.required }
+func (f *fakeCollector) Name() string   { return f.name }
+func (f *fakeCollector) Required() bool { return f.required }
 func (f *fakeCollector) Collect(context.Context, *app.Context) ([]byte, error) {
 	if f.failWith != nil {
 		return nil, f.failWith

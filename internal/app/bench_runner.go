@@ -63,13 +63,13 @@ type RunnerBenchEnvironment struct {
 
 // RunnerBenchCase is one benchmark measurement set.
 type RunnerBenchCase struct {
-	ID            string  `json:"id"`
-	CacheState    string  `json:"cacheState"`
-	Samples       int     `json:"samples"`
-	RawSamplesNs  []int64 `json:"rawSamplesNs"`
-	MedianNs      int64   `json:"medianNs"`
-	P95Ns         int64   `json:"p95Ns"`
-	Units         string  `json:"units"`
+	ID           string  `json:"id"`
+	CacheState   string  `json:"cacheState"`
+	Samples      int     `json:"samples"`
+	RawSamplesNs []int64 `json:"rawSamplesNs"`
+	MedianNs     int64   `json:"medianNs"`
+	P95Ns        int64   `json:"p95Ns"`
+	Units        string  `json:"units"`
 }
 
 // RunnerBenchResult is the JSON output for m benchmark runner.
@@ -87,19 +87,19 @@ type RunnerBenchResult struct {
 
 // RunnerBenchCompare records baseline comparison outcome.
 type RunnerBenchCompare struct {
-	Status    string               `json:"status"`
-	Baseline  string               `json:"baseline,omitempty"`
-	Message   string               `json:"message,omitempty"`
-	Threshold float64              `json:"thresholdPct,omitempty"`
+	Status    string                     `json:"status"`
+	Baseline  string                     `json:"baseline,omitempty"`
+	Message   string                     `json:"message,omitempty"`
+	Threshold float64                    `json:"thresholdPct,omitempty"`
 	Details   []RunnerBenchCompareDetail `json:"details,omitempty"`
 }
 
 type RunnerBenchCompareDetail struct {
-	CaseID          string  `json:"caseId"`
-	CurrentMedianNs int64   `json:"currentMedianNs"`
-	BaselineMedianNs int64  `json:"baselineMedianNs"`
-	DeltaPct        float64 `json:"deltaPct"`
-	Verdict         string  `json:"verdict"`
+	CaseID           string  `json:"caseId"`
+	CurrentMedianNs  int64   `json:"currentMedianNs"`
+	BaselineMedianNs int64   `json:"baselineMedianNs"`
+	DeltaPct         float64 `json:"deltaPct"`
+	Verdict          string  `json:"verdict"`
 }
 
 // BenchRunner executes runner smoke/full benchmarks without public registry access.

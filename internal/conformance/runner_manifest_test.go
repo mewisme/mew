@@ -84,9 +84,9 @@ func TestRunnerManifestPath(t *testing.T) {
 
 func TestRunnerOverallResult(t *testing.T) {
 	tests := []struct {
-		name     string
-		suites   []RunnerSuiteResult
-		want     string
+		name   string
+		suites []RunnerSuiteResult
+		want   string
 	}{
 		{
 			name: "empty fails",

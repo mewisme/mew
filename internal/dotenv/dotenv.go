@@ -262,13 +262,18 @@ func validKey(key string) bool {
 	return true
 }
 
+// Open is the function used to open .env files. It is a variable so that
+// tests can replace it with a failing implementation to simulate I/O errors
+// without relying on platform-specific permission mechanisms.
+var Open = os.Open
+
 // Load parses multiple .env files and returns merged KEY=VALUE strings.
 // Files are loaded in order; later files override earlier ones.
 // Missing files are silently skipped. Use LoadRequired when every file must exist.
 func Load(files []string) ([]string, error) {
 	merged := make(map[string]string)
 	for _, f := range files {
-		fh, err := os.Open(f)
+		fh, err := Open(f)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -294,7 +299,7 @@ func Load(files []string) ([]string, error) {
 func LoadRequired(files []string) ([]string, error) {
 	merged := make(map[string]string)
 	for _, f := range files {
-		fh, err := os.Open(f)
+		fh, err := Open(f)
 		if err != nil {
 			return nil, fmt.Errorf("dotenv: opening %s: %w", f, err)
 		}

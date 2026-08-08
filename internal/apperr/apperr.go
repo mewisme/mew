@@ -65,10 +65,10 @@ const (
 	EnvFileRead     Code = "ERR_M_ENV_FILE_READ"
 	EnvFileParse    Code = "ERR_M_ENV_FILE_PARSE"
 	// Inspector error codes (0056).
-	InspectorBind  Code = "ERR_M_INSPECTOR_BIND"
-	InspectorPort  Code = "ERR_M_INSPECTOR_PORT"
-	InspectorHost  Code = "ERR_M_INSPECTOR_HOST"
-	InspectorDup   Code = "ERR_M_INSPECTOR_DUPLICATE"
+	InspectorBind Code = "ERR_M_INSPECTOR_BIND"
+	InspectorPort Code = "ERR_M_INSPECTOR_PORT"
+	InspectorHost Code = "ERR_M_INSPECTOR_HOST"
+	InspectorDup  Code = "ERR_M_INSPECTOR_DUPLICATE"
 )
 
 // registry maps every published code to a process exit status.

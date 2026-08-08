@@ -477,12 +477,12 @@ func doctorCheckSourceMap(ctx context.Context, ac *Context) DoctorCheck {
 	engine := transform.NewEsbuildEngine()
 	source := []byte("export const x: number = 1;\n")
 	req := transform.TransformRequest{
-		SourcePath:    "doctor-probe.ts",
-		SourceBytes:   source,
-		Loader:        transform.LoaderTS,
-		Format:        transform.FormatESM,
+		SourcePath:     "doctor-probe.ts",
+		SourceBytes:    source,
+		Loader:         transform.LoaderTS,
+		Format:         transform.FormatESM,
 		NormalizedOpts: transform.NormalizedOptions{Target: "es2022"},
-		SourceMapMode: transform.SourceMapExternal,
+		SourceMapMode:  transform.SourceMapExternal,
 	}
 
 	result, err := engine.Transform(ctx, req)

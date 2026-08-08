@@ -664,9 +664,9 @@ func (s *Session) handleTransformWork(reqCtx context.Context, conn net.Conn, req
 	// Cache miss, corruption, or cache disabled: run engine.
 	if result == nil && resultErr == nil {
 		trace.Emit(reqCtx, trace.CatTransform, trace.TypeTransformEngine, trace.TransformData{
-			RequestID:  req.ID,
-			Format:     string(tReq.Format),
-			Loader:     string(tReq.Loader),
+			RequestID: req.ID,
+			Format:    string(tReq.Format),
+			Loader:    string(tReq.Loader),
 		})
 		engineResult, engineErr := s.engine.Transform(reqCtx, tReq)
 		if engineErr == nil {
@@ -718,8 +718,8 @@ func (s *Session) handleTransformWork(reqCtx context.Context, conn net.Conn, req
 			msg = "transform timeout"
 		}
 		trace.Emit(reqCtx, trace.CatTransform, trace.TypeTransformCancel, trace.TransformData{
-			RequestID:   req.ID,
-			ErrorCode:   code,
+			RequestID: req.ID,
+			ErrorCode: code,
 		})
 		writeResponseLocked(writeMu, conn, TransformResponseV2{
 			V: ProtocolVersion, ID: req.ID, OK: false,

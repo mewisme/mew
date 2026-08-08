@@ -116,14 +116,14 @@ func isLoopback(host string) bool {
 // the loopback policy is not enforced since native Node behavior is desired.
 func ParseInspectorFlags(v8Args []string, zeroAugmentation bool) (*InspectorConfig, []string, error) {
 	var (
-		cfg        InspectorConfig
-		runAddr    string // address from --inspect
-		brkAddr    string // address from --inspect-brk
-		runCount   int
-		brkCount   int
-		others     []string
-		runValues  []string // raw values for duplicate detection
-		brkValues  []string
+		cfg       InspectorConfig
+		runAddr   string // address from --inspect
+		brkAddr   string // address from --inspect-brk
+		runCount  int
+		brkCount  int
+		others    []string
+		runValues []string // raw values for duplicate detection
+		brkValues []string
 	)
 
 	for _, arg := range v8Args {

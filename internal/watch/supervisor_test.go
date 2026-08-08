@@ -37,7 +37,7 @@ func (fw *fakeWatcher) Remove(path string) error {
 	fw.mu.Unlock()
 	return nil
 }
-func (fw *fakeWatcher) Backend() Backend    { return BackendNative }
+func (fw *fakeWatcher) Backend() Backend     { return BackendNative }
 func (fw *fakeWatcher) Events() <-chan Event { return fw.events }
 func (fw *fakeWatcher) Errors() <-chan error { return fw.errs }
 func (fw *fakeWatcher) Close() error {

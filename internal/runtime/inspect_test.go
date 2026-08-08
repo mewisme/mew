@@ -275,11 +275,11 @@ func TestIsLoopback(t *testing.T) {
 
 func TestParseInspectorAddr(t *testing.T) {
 	tests := []struct {
-		raw         string
-		wantHost    string
-		wantPort    int
+		raw          string
+		wantHost     string
+		wantPort     int
 		wantExplicit bool
-		wantErr     bool
+		wantErr      bool
 	}{
 		{"", "127.0.0.1", 0, false, false},
 		{"9229", "127.0.0.1", 9229, true, false},

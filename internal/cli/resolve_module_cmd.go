@@ -23,14 +23,14 @@ import (
 
 // diagResult is the structured JSON output from resolve-diagnostic.mjs.
 type diagResult struct {
-	SchemaVersion int            `json:"schemaVersion"`
-	Specifier     string         `json:"specifier"`
-	Importer      string         `json:"importer"`
-	Resolved      bool           `json:"resolved"`
-	Target        *diagTarget    `json:"target"`
-	Error         *diagError     `json:"error"`
-	PnP           *diagPnP       `json:"pnp,omitempty"`
-	Trace         []diagStep     `json:"trace"`
+	SchemaVersion int         `json:"schemaVersion"`
+	Specifier     string      `json:"specifier"`
+	Importer      string      `json:"importer"`
+	Resolved      bool        `json:"resolved"`
+	Target        *diagTarget `json:"target"`
+	Error         *diagError  `json:"error"`
+	PnP           *diagPnP    `json:"pnp,omitempty"`
+	Trace         []diagStep  `json:"trace"`
 }
 
 type diagTarget struct {
@@ -50,21 +50,21 @@ type diagPnP struct {
 }
 
 type diagStep struct {
-	Stage      string   `json:"stage"`
-	Outcome    string   `json:"outcome"`
-	Resolved   string   `json:"resolved,omitempty"`
-	Substituted string  `json:"substituted,omitempty"`
-	Format     string   `json:"format,omitempty"`
-	Pattern    string   `json:"pattern,omitempty"`
-	Targets    []string `json:"targets,omitempty"`
-	Error      string   `json:"error,omitempty"`
-	Code       string   `json:"code,omitempty"`
-	Note       string   `json:"note,omitempty"`
-	Reason     string   `json:"reason,omitempty"`
-	Candidate  string   `json:"candidate,omitempty"`
-	PnPRoot    string   `json:"pnpRoot,omitempty"`
-	Specifier  string   `json:"specifier,omitempty"`
-	URL        string   `json:"url,omitempty"`
+	Stage       string   `json:"stage"`
+	Outcome     string   `json:"outcome"`
+	Resolved    string   `json:"resolved,omitempty"`
+	Substituted string   `json:"substituted,omitempty"`
+	Format      string   `json:"format,omitempty"`
+	Pattern     string   `json:"pattern,omitempty"`
+	Targets     []string `json:"targets,omitempty"`
+	Error       string   `json:"error,omitempty"`
+	Code        string   `json:"code,omitempty"`
+	Note        string   `json:"note,omitempty"`
+	Reason      string   `json:"reason,omitempty"`
+	Candidate   string   `json:"candidate,omitempty"`
+	PnPRoot     string   `json:"pnpRoot,omitempty"`
+	Specifier   string   `json:"specifier,omitempty"`
+	URL         string   `json:"url,omitempty"`
 }
 
 func newResolveModuleCmd() *cobra.Command {

@@ -61,7 +61,7 @@ type LaunchPlan struct {
 	AppArgs           []string
 	EnvChanges        []string
 	ZeroAugmentation  bool
-	EnableSourceMaps  bool // add --enable-source-maps to Node when capability present
+	EnableSourceMaps  bool             // add --enable-source-maps to Node when capability present
 	Inspector         *InspectorConfig // normalized inspector flags (nil when not requested)
 	CleanupHook       func() error
 }

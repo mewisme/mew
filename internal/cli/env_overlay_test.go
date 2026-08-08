@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mewisme/mew/internal/apperr"
+	"github.com/mewisme/mew/internal/dotenv"
 )
 
 func TestBuildEnvOverlayNoFlags(t *testing.T) {
@@ -140,11 +141,17 @@ func TestBuildEnvOverlayExplicitFileUnreadable(t *testing.T) {
 	dir := t.TempDir()
 	bad := filepath.Join(dir, "unreadable.env")
 	writeEnvTestFile(t, bad, "KEY=value\n")
-	if err := os.Chmod(bad, 0o000); err != nil {
-		t.Skipf("cannot chmod on this platform: %v", err)
+
+	// Inject a failing open for this specific file so the test works
+	// cross-platform without relying on Unix permission bits.
+	orig := dotenv.Open
+	dotenv.Open = func(name string) (*os.File, error) {
+		if name == bad {
+			return nil, &os.PathError{Op: "open", Path: name, Err: os.ErrPermission}
+		}
+		return orig(name)
 	}
-	// Restore permission so TempDir cleanup works.
-	defer func() { _ = os.Chmod(bad, 0o644) }()
+	defer func() { dotenv.Open = orig }()
 
 	_, err := buildEnvOverlay(dir, leadingDispatchFlags{envFile: []string{bad}})
 	if err == nil {
