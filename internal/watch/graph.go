@@ -192,13 +192,20 @@ func (g *DependencyGraph) ShouldTrigger(path string) bool {
 			return isRelevantPath(path)
 		}
 	}
-	// Match under a covered module directory.
+	// Match under a covered module directory.  Only explicit module/config
+	// files (tested above) plus directory events and .env* files trigger.
+	// Arbitrary sibling .ts/.js/.json files do NOT trigger just because
+	// they share a directory with a tracked module.
 	for dir := range g.dirRefs {
 		if hasPathPrefix(path, dir) {
 			if key == pathKey(dir) {
+				return true // directory event
+			}
+			// .env* files under module dirs are config-like and must trigger.
+			if strings.HasPrefix(filepath.Base(path), ".env") {
 				return true
 			}
-			return isRelevantPath(path)
+			return false
 		}
 	}
 	return false

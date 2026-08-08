@@ -14,7 +14,9 @@ type nativeWatcher struct {
 	errs   chan error
 	done   chan struct{}
 
-	mu     sync.Mutex
+	mu sync.Mutex
+	wg sync.WaitGroup
+
 	closed bool
 }
 
@@ -29,6 +31,7 @@ func newNativeWatcher() (*nativeWatcher, error) {
 		errs:   make(chan error, 16),
 		done:   make(chan struct{}),
 	}
+	nw.wg.Add(1)
 	go nw.loop()
 	return nw, nil
 }
@@ -36,6 +39,13 @@ func newNativeWatcher() (*nativeWatcher, error) {
 func (nw *nativeWatcher) Backend() Backend { return BackendNative }
 
 func (nw *nativeWatcher) Add(path string) error {
+	nw.mu.Lock()
+	if nw.closed {
+		nw.mu.Unlock()
+		return ErrWatcherClosed
+	}
+	nw.mu.Unlock()
+
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -72,7 +82,15 @@ func (nw *nativeWatcher) addDir(dir string) error {
 	})
 }
 
-func (nw *nativeWatcher) Remove(path string) error { return nw.w.Remove(path) }
+func (nw *nativeWatcher) Remove(path string) error {
+	nw.mu.Lock()
+	if nw.closed {
+		nw.mu.Unlock()
+		return ErrWatcherClosed
+	}
+	nw.mu.Unlock()
+	return nw.w.Remove(path)
+}
 
 func (nw *nativeWatcher) Events() <-chan Event { return nw.events }
 func (nw *nativeWatcher) Errors() <-chan error { return nw.errs }
@@ -86,10 +104,12 @@ func (nw *nativeWatcher) Close() error {
 	nw.closed = true
 	nw.mu.Unlock()
 	close(nw.done)
+	nw.wg.Wait() // wait for loop goroutine to terminate
 	return nw.w.Close()
 }
 
 func (nw *nativeWatcher) loop() {
+	defer nw.wg.Done()
 	defer close(nw.events)
 	defer close(nw.errs)
 
@@ -108,9 +128,9 @@ func (nw *nativeWatcher) loop() {
 			}
 			path := normalizePath(evt.Name)
 
-			// When a new directory is created under a watched dir,
-			// recursively register its existing subtree.
-			if evt.Has(fsnotify.Create) && isDir(evt.Name) {
+			// When a new directory is created or moved into a watched
+			// dir, recursively register its existing subtree.
+			if (evt.Has(fsnotify.Create) || evt.Has(fsnotify.Rename)) && isDir(evt.Name) {
 				base := filepath.Base(evt.Name)
 				if !shouldSkipDir(base) {
 					_ = nw.addDir(evt.Name)

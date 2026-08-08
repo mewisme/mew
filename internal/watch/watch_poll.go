@@ -35,6 +35,7 @@ type pollingWatcher struct {
 	errs     chan error
 	done     chan struct{}
 	closed   bool
+	wg       sync.WaitGroup
 }
 
 func newPollingWatcher(interval time.Duration) *pollingWatcher {
@@ -49,6 +50,7 @@ func newPollingWatcher(interval time.Duration) *pollingWatcher {
 		errs:     make(chan error, 16),
 		done:     make(chan struct{}),
 	}
+	pw.wg.Add(1)
 	go pw.loop()
 	return pw
 }
@@ -58,6 +60,9 @@ func (pw *pollingWatcher) Backend() Backend { return BackendPolling }
 func (pw *pollingWatcher) Add(path string) error {
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
+	if pw.closed {
+		return ErrWatcherClosed
+	}
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -66,25 +71,41 @@ func (pw *pollingWatcher) Add(path string) error {
 
 	key := pathKey(path)
 	if info.IsDir() {
+		// Only add the top-level root; subdirectories are covered by the
+		// recursive walk during poll.  Avoids overlapping root scans.
+		if _, exists := pw.roots[key]; exists {
+			return nil // already covered
+		}
 		pw.roots[key] = struct{}{}
-		return pw.addDirLocked(path)
+		return pw.scanRootLocked(path)
 	}
 
 	pw.paths[key] = fingerprint(info)
 	return nil
 }
 
-func (pw *pollingWatcher) addDirLocked(dir string) error {
+// scanRootLocked snapshots the files under dir (non-recursive for sub-roots;
+// subdirectories are walked but not registered as separate roots — the parent
+// root's poll walk already covers them).  Caller must hold pw.mu.
+func (pw *pollingWatcher) scanRootLocked(dir string) error {
 	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
+			// Surface the first meaningful error, then keep going.
+			select {
+			case pw.errs <- err:
+			default:
+			}
 			return nil
 		}
 		if d.IsDir() {
+			if path == dir {
+				return nil
+			}
 			base := filepath.Base(path)
 			if shouldSkipDir(base) {
 				return filepath.SkipDir
 			}
-			pw.roots[pathKey(path)] = struct{}{}
+			// Subdirectory covered by parent-root walk; do not add as root.
 			return nil
 		}
 		info, err := d.Info()
@@ -99,6 +120,9 @@ func (pw *pollingWatcher) addDirLocked(dir string) error {
 func (pw *pollingWatcher) Remove(path string) error {
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
+	if pw.closed {
+		return ErrWatcherClosed
+	}
 	key := pathKey(path)
 	delete(pw.roots, key)
 	sep := string(filepath.Separator)
@@ -115,15 +139,19 @@ func (pw *pollingWatcher) Errors() <-chan error { return pw.errs }
 
 func (pw *pollingWatcher) Close() error {
 	pw.mu.Lock()
-	defer pw.mu.Unlock()
-	if !pw.closed {
-		pw.closed = true
-		close(pw.done)
+	if pw.closed {
+		pw.mu.Unlock()
+		return nil
 	}
+	pw.closed = true
+	pw.mu.Unlock()
+	close(pw.done)
+	pw.wg.Wait() // wait for loop goroutine to terminate
 	return nil
 }
 
 func (pw *pollingWatcher) loop() {
+	defer pw.wg.Done()
 	ticker := time.NewTicker(pw.interval)
 	defer ticker.Stop()
 	defer close(pw.events)
@@ -149,6 +177,10 @@ func (pw *pollingWatcher) poll() {
 	for root := range pw.roots {
 		_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
+				select {
+				case pw.errs <- err:
+				default:
+				}
 				return nil
 			}
 			if d.IsDir() {
@@ -156,7 +188,7 @@ func (pw *pollingWatcher) poll() {
 				if shouldSkipDir(base) {
 					return filepath.SkipDir
 				}
-				pw.roots[pathKey(path)] = struct{}{}
+				// Subdirectory covered by parent-root walk; do not add as root.
 				return nil
 			}
 			key := pathKey(path)

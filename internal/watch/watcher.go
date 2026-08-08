@@ -2,9 +2,13 @@
 package watch
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 )
+
+// ErrWatcherClosed is returned by Add/Remove when the watcher is already closed.
+var ErrWatcherClosed = errors.New("watch: watcher is closed")
 
 // Op describes a file operation.
 type Op uint32

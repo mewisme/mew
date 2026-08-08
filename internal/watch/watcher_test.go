@@ -350,6 +350,101 @@ func TestNormalizePathIdentity(t *testing.T) {
 	}
 }
 
+func TestPollingWatcherCloseWaits(t *testing.T) {
+	pw := newPollingWatcher(100)
+	dir := t.TempDir()
+	if err := pw.Add(dir); err != nil {
+		_ = pw.Close()
+		t.Fatalf("Add: %v", err)
+	}
+
+	// Close must block until the loop goroutine terminates.
+	done := make(chan struct{})
+	go func() {
+		_ = pw.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Close returned — loop terminated.
+	case <-time.After(time.Second):
+		t.Fatal("Close blocked, loop did not terminate")
+	}
+}
+
+func TestPollingWatcherAddAfterClose(t *testing.T) {
+	pw := newPollingWatcher(100)
+	if err := pw.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := pw.Add("/tmp/test"); err != ErrWatcherClosed {
+		t.Errorf("Add after Close: expected ErrWatcherClosed, got %v", err)
+	}
+}
+
+func TestPollingWatcherRemoveAfterClose(t *testing.T) {
+	pw := newPollingWatcher(100)
+	if err := pw.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := pw.Remove("/tmp/test"); err != ErrWatcherClosed {
+		t.Errorf("Remove after Close: expected ErrWatcherClosed, got %v", err)
+	}
+}
+
+func TestPollingWatcherRootDedup(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "subdir")
+	nested := filepath.Join(sub, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	pw := newPollingWatcher(50)
+	defer func() { _ = pw.Close() }()
+
+	if err := pw.Add(dir); err != nil {
+		t.Fatalf("Add dir: %v", err)
+	}
+
+	pw.mu.Lock()
+	nRoots := len(pw.roots)
+	pw.mu.Unlock()
+
+	// Only the top-level root should be registered; subdirectories must not
+	// be added as separate roots to avoid overlapping scans.
+	if nRoots != 1 {
+		t.Errorf("expected 1 root, got %d (overlapping roots)", nRoots)
+	}
+}
+
+func TestNativeWatcherAddAfterClose(t *testing.T) {
+	nw, err := newNativeWatcher()
+	if err != nil {
+		t.Fatalf("newNativeWatcher: %v", err)
+	}
+	if err := nw.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := nw.Add("/tmp/test"); err != ErrWatcherClosed {
+		t.Errorf("Add after Close: expected ErrWatcherClosed, got %v", err)
+	}
+}
+
+func TestNativeWatcherRemoveAfterClose(t *testing.T) {
+	nw, err := newNativeWatcher()
+	if err != nil {
+		t.Fatalf("newNativeWatcher: %v", err)
+	}
+	if err := nw.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if err := nw.Remove("/tmp/test"); err != ErrWatcherClosed {
+		t.Errorf("Remove after Close: expected ErrWatcherClosed, got %v", err)
+	}
+}
+
 func TestPathKeyIdentity(t *testing.T) {
 	dir := t.TempDir()
 	a := filepath.Join(dir, "file.txt")

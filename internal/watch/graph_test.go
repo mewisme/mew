@@ -211,13 +211,19 @@ func TestDependencyGraphShouldTrigger(t *testing.T) {
 		t.Error("ShouldTrigger false for tracked config")
 	}
 
-	// Relevant source file under covered dir.
-	srcFile := NormalizePath("/proj/src/foo.ts")
-	if !g.ShouldTrigger(srcFile) {
-		t.Error("ShouldTrigger false for .ts file under covered dir")
+	// Arbitrary .ts sibling under covered dir — must NOT trigger.
+	// Only exact tracked modules trigger under module-directory coverage.
+	sibling := NormalizePath("/proj/src/other.ts")
+	if g.ShouldTrigger(sibling) {
+		t.Error("ShouldTrigger true for untracked .ts sibling under covered dir")
 	}
 
-	// .env file under covered dir.
+	// Exact tracked module under covered dir must trigger.
+	if !g.ShouldTrigger(NormalizePath(mod)) {
+		t.Error("ShouldTrigger false for exact tracked module")
+	}
+
+	// .env file under covered dir triggers (config-like).
 	envFile := NormalizePath("/proj/src/.env")
 	if !g.ShouldTrigger(envFile) {
 		t.Error("ShouldTrigger false for .env file under covered dir")

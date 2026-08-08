@@ -497,15 +497,37 @@ func TestSupervisorFiltersByGraph(t *testing.T) {
 		t.Errorf("README.md triggered restart: before=%d after=%d", before, after)
 	}
 
-	// Emit a relevant source file — should trigger restart.
+	// Emit the exact tracked module — should trigger restart.
 	before = after
-	fw.emit(OpWrite, "/proj/src/app.ts")
+	fw.emit(OpWrite, "/proj/src/index.ts")
 	time.Sleep(100 * time.Millisecond)
 	mu.Lock()
 	after = restartCount
 	mu.Unlock()
 	if after <= before {
-		t.Error("tracked source file did not trigger restart")
+		t.Error("tracked module did not trigger restart")
+	}
+
+	// Emit .env under covered dir — should trigger restart (config-like).
+	before = after
+	fw.emit(OpWrite, "/proj/src/.env")
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	after = restartCount
+	mu.Unlock()
+	if after <= before {
+		t.Error(".env under covered dir did not trigger restart")
+	}
+
+	// Emit an untracked sibling .ts — should NOT trigger restart.
+	before = after
+	fw.emit(OpWrite, "/proj/src/other.ts")
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	after = restartCount
+	mu.Unlock()
+	if after > before {
+		t.Error("untracked .ts sibling triggered restart")
 	}
 
 	cancel()
@@ -751,6 +773,73 @@ func TestSupervisorWatcherChannelClosure(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Error("timeout waiting for supervisor to detect watcher failure")
+	}
+}
+
+// TestSupervisorNoRestartDuringShutdown verifies that a pending debounce
+// does not trigger a restart after the parent context is cancelled.
+func TestSupervisorNoRestartDuringShutdown(t *testing.T) {
+	fw := newFakeWatcher()
+	defer func() { _ = fw.Close() }()
+
+	var mu sync.Mutex
+	restartCount := 0
+	started := make(chan struct{}, 4)
+	restart := func(ctx context.Context) (int, error) {
+		mu.Lock()
+		restartCount++
+		mu.Unlock()
+		started <- struct{}{}
+		<-ctx.Done()
+		return 0, ctx.Err()
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 200 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := sup.Run(ctx)
+		errCh <- err
+	}()
+
+	// Wait for first launch.
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for first launch")
+	}
+
+	// Emit a file change to start the debounce timer.
+	fw.emit(OpWrite, "/fake/x.ts")
+
+	// Immediately cancel the context while the debounce timer is pending.
+	// The supervisor must not restart after cancellation.
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != context.Canceled {
+			t.Logf("supervisor returned: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for supervisor exit")
+	}
+
+	mu.Lock()
+	n := restartCount
+	mu.Unlock()
+	// At most 1 restart (the initial launch). The debounce timer should
+	// not trigger a second restart after cancellation.
+	if n > 1 {
+		t.Errorf("restarted %d times during shutdown, want <= 1", n)
 	}
 }
 

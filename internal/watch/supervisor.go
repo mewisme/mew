@@ -183,6 +183,14 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 
 		select {
 		case <-triggerRestart:
+			// Don't restart if the parent context is already done.
+			select {
+			case <-ctx.Done():
+				cancelChild()
+				s.waitChild(childDone, termTimeout)
+				return lastCode, ctx.Err()
+			default:
+			}
 			if s.opts.OnRestart != nil {
 				s.opts.OnRestart("file changed")
 			}
