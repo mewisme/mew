@@ -20,9 +20,9 @@ var runtimeExts = map[string]bool{
 	".cts": true,
 }
 
-// nextPlanExts are extensions deferred to a future plan.
+// nextPlanExts are extensions not yet supported by the runtime.
 var nextPlanExts = map[string]string{
-	".jsx": "0053",
+	".jsx": "future",
 }
 
 // IsJSFile reports whether the selector looks like a runtime file (has a supported
@@ -41,8 +41,8 @@ func IsRuntimeFile(selector string) bool {
 	if runtimeExts[ext] {
 		return true
 	}
-	// Deferred extensions are still runtime files — the dispatcher
-	// gives an actionable plan-deferral message instead of "unknown command".
+	// Unsupported extensions are still recognized as runtime files so the
+	// dispatcher can give an actionable message instead of "unknown command".
 	if _, ok := nextPlanExts[ext]; ok {
 		return true
 	}
@@ -53,8 +53,8 @@ func IsRuntimeFile(selector string) bool {
 	return false
 }
 
-// IsNextPlanExt reports whether the extension is deferred to a future plan and
-// returns the plan ID.
+// IsNextPlanExt reports whether the extension is not yet supported and
+// returns the deferral key.
 func IsNextPlanExt(selector string) (string, bool) {
 	ext := strings.ToLower(filepath.Ext(selector))
 	plan, ok := nextPlanExts[ext]

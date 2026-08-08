@@ -331,10 +331,11 @@ func PlanAndLaunch(ctx context.Context, req LaunchRequest, eff *config.Effective
 			DurationMs:   time.Since(planStart).Milliseconds(),
 		})
 		// Plan failed: contribution still owns the session; clean it up.
+		var planCleanupErr error
 		if req.Contribution != nil && req.Contribution.CleanupHook != nil {
-			_ = req.Contribution.CleanupHook()
+			planCleanupErr = req.Contribution.CleanupHook()
 		}
-		return planErr
+		return MergeCleanupError(planErr, planCleanupErr)
 	}
 
 	planData := trace.LifecycleData{

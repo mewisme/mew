@@ -1,9 +1,11 @@
-# Node runtime (MVP 0050–0051)
+# Node runtime (MVP 0050–0057)
 
-Mew can run `.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, and `.cts` files directly
-through the `m` CLI. 0050 provides Node launch, augmentation, and preload
-injection. 0051 adds the Go transform service (esbuild), TypeScript execution,
-and a content-addressed transpile cache.
+Mew can run `.js`, `.mjs`, `.cjs`, `.ts`, `.tsx`, `.mts`, and `.cts` files
+directly through the `m` CLI. 0050 provides Node launch, augmentation, and
+preload injection. 0051 adds the Go transform service (esbuild), TypeScript
+execution, and a content-addressed transpile cache. 0052–0057 add JSX,
+decorators, source maps, module resolution, loaders, PnP, env files, workers,
+Web Storage, watch mode, debugging, and diagnostics.
 
 ## Quick start
 
@@ -40,8 +42,8 @@ dispatch:
 Built-in commands always win over same-named JS files. Use `m run <script>` to
 force a script when a name collides.
 
-Deferred extensions (`.tsx`, `.jsx`) return an actionable plan-0052 deferral
-message instead of "unknown command".
+The `.jsx` extension is not yet supported (use `.tsx` for JSX with TypeScript).
+The dispatcher returns an actionable message instead of "unknown command".
 
 ## Node discovery
 
@@ -256,9 +258,10 @@ the parent process.
 - Module format detection (`.mts` → ESM, `.cts` → CJS, `.ts`/`.tsx` →
   nearest `package.json` `type`)
 
-**Capabilities NOT propagated:**
+**Capabilities with limited or no propagation:**
 
-- Web Storage (`localStorage`/`sessionStorage` preloads)
+- Web Storage (`localStorage`/`sessionStorage`): propagated to workers and
+  forked children; not injected for spawn/execFile children
 - Inspector settings
 - Watch supervision
 - Custom user loaders (each child must register its own `--loader`)

@@ -82,13 +82,13 @@ func registry() []Entry {
 			Option:     "baseUrl",
 			Status:     StatusPartial,
 			Category:   CategoryTypeScript,
-			Limitation: "Resolution only via 0053 resolve hook; not consumed by transform engine",
+			Limitation: "Handled by module resolution hooks; not consumed by transform engine",
 		},
 		{
 			Option:     "paths",
 			Status:     StatusPartial,
 			Category:   CategoryTypeScript,
-			Limitation: "Resolution only via 0053 resolve hook; not consumed by transform engine",
+			Limitation: "Handled by module resolution hooks; not consumed by transform engine",
 		},
 
 		// JSX.

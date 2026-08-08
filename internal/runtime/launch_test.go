@@ -122,8 +122,9 @@ func TestPlanAndLaunch_PlanFailureCleansUpContribution(t *testing.T) {
 }
 
 func TestPlanAndLaunch_PlanFailureCleanupErrorNotLost(t *testing.T) {
+	cleanupErr := errors.New("cleanup-fail")
 	contrib := &runtime.LaunchContribution{
-		CleanupHook: func() error { return errors.New("cleanup-fail") },
+		CleanupHook: func() error { return cleanupErr },
 	}
 	req := runtime.LaunchRequest{
 		Entrypoint:   "",
@@ -133,17 +134,13 @@ func TestPlanAndLaunch_PlanFailureCleanupErrorNotLost(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from Plan")
 	}
-	// Plan error is the primary — cleanup error from contribution cleanup
-	// is discarded (same as MergeCleanupError with nil primary).
-	// The important thing is cleanup ran.
-	if !errors.Is(err, errors.New("cleanup-fail")) {
-		// Primary (Plan's error) takes precedence; cleanup is discarded when
-		// there's no launch error to merge with. This matches MergeCleanupError
-		// behavior: if launchErr is nil and cleanupErr is non-nil, return cleanupErr.
-		// But here Plan returns the error, so both Plan error and cleanup error
-		// exist. PlanAndLaunch returns Plan's error directly on Plan failure
-		// (cleanup error is logged via _ = hook()).
-		t.Logf("got: %v", err)
+	// Plan error is the primary; cleanup error is preserved via MergeCleanupError.
+	if !errors.Is(err, cleanupErr) {
+		t.Fatalf("cleanup error not preserved in merged error: %v", err)
+	}
+	// Primary (Plan) error must still be identifiable via CodeOf.
+	if code := apperr.CodeOf(err); code == "" {
+		t.Fatal("expected non-empty error code from Plan primary error")
 	}
 }
 

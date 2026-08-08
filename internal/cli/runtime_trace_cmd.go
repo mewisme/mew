@@ -118,16 +118,16 @@ NDJSON (one event per line) on stdout.`,
 			if !asJSON {
 				// Human-readable: drain events and render after execution.
 				if err := sink.Close(); err != nil {
-					return err
+					return apperr.JoinCleanup(launchErr, err)
 				}
 				if err := renderHumanTrace(cmd, sink.Events(), sess.ID); err != nil {
-					return err
+					return apperr.JoinCleanup(launchErr, err)
 				}
 			} else {
 				// NDJSON mode: events already streaming to stdout via writeLoop.
 				// Wait briefly for final events then close.
 				if err := sink.Close(); err != nil {
-					return err
+					return apperr.JoinCleanup(launchErr, err)
 				}
 			}
 

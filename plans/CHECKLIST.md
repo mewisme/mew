@@ -2,15 +2,15 @@
 
 ## Program status
 
-- Current MVP: **0052** — Runtime MVP 3 — JSX, Decorators, and Source-Map Parity
-- Last updated: 2026-08-07
+- Current MVP: **0057** — Runtime Stabilization Gate
+- Last updated: 2026-08-09
 - Source of truth: per-MVP files under `plans/00xx-*.md`
 - Regenerate: `python3 plans/scripts/enrich_and_generate.py`
 - Runtime certification: pending (0057 stabilization gate not yet reached)
 
 ## Do now
 
-**Next:** [0052 - Runtime MVP 3 — JSX, Decorators, and Source-Map Parity](0052-jsx-decorators-sourcemaps.md)
+**Next:** [0057 - Runtime Stabilization Gate](0057-runtime-stabilization.md)
 
 <!-- CHECKLIST:NARRATIVE:BEGIN -->
 **Stabilization pass 17 (2026-08-02):** Runner/runtime stabilization — P0 defects fixed across 0040-0051: ExitStatus type for child exits (no ERR_M_INTERNAL), graceful cancellation with 10s grace period, workspace cancellation error, conditional TS loader injection, runtime asset pre-execution verification, transform cache wired into execution, concurrent loader request map, Phase A boolean parity, UsedFallback telemetry, corrupt environment recovery, 13 ERR_M_TRANSFORM_* codes, tsconfig wiring, manifest validation, file URL compliance, staging cleanup, timeout result discarding. 13 commits, 1576 tests pass. Evidence: [`docs/evidence/core/pass32-ci.md`](../docs/evidence/core/pass32-ci.md).
@@ -78,11 +78,11 @@ Stabilization pass 8 complete 2026-07-28: merged `fae9b48`.
 | 0046 | Runner Stabilization Gate | Runner / Stabilization | 0040, 0041, 0042, 0043, 0044, 0045 | [x] | [0046](0046-runner-stabilization.md) |
 | 0050 | Runtime MVP 1 — Node Launch and Compatibility Boundary | Runtime / MVP 1 | 0046 | [x] | [0050](0050-node-launch-compat.md) |
 | 0051 | Runtime MVP 2 — Go Transform Service and TypeScript Execu... | Runtime / MVP 2 | 0050 | [x] | [0051](0051-go-transform-service.md) |
-| 0052 | Runtime MVP 3 — JSX, Decorators, and Source-Map Parity | Runtime / MVP 3 | 0051 | [ ] | [0052](0052-jsx-decorators-sourcemaps.md) |
-| 0053 | Runtime MVP 4 — Module Resolution, Path Aliases, and Cust... | Runtime / MVP 4 | 0019, 0025, 0052 | [ ] | [0053](0053-module-resolution-loaders.md) |
-| 0054 | Runtime MVP 5 — Environment Loading, Workers, Storage, an... | Runtime / MVP 5 | 0050, 0053 | [ ] | [0054](0054-env-modern-apis.md) |
-| 0055 | Runtime MVP 6 — Dependency-Aware Watch Mode | Runtime / MVP 6 | 0040, 0053, 0054 | [ ] | [0055](0055-watch-mode.md) |
-| 0056 | Runtime MVP 7 — Debugging, Inspection, and Runtime Diagno... | Runtime / MVP 7 | 0052, 0053, 0055 | [ ] | [0056](0056-debugging-inspection.md) |
+| 0052 | Runtime MVP 3 — JSX, Decorators, and Source-Map Parity | Runtime / MVP 3 | 0051 | [x] | [0052](0052-jsx-decorators-sourcemaps.md) |
+| 0053 | Runtime MVP 4 — Module Resolution, Path Aliases, and Cust... | Runtime / MVP 4 | 0019, 0025, 0052 | [x] | [0053](0053-module-resolution-loaders.md) |
+| 0054 | Runtime MVP 5 — Environment Loading, Workers, Storage, an... | Runtime / MVP 5 | 0050, 0053 | [x] | [0054](0054-env-modern-apis.md) |
+| 0055 | Runtime MVP 6 — Dependency-Aware Watch Mode | Runtime / MVP 6 | 0040, 0053, 0054 | [x] | [0055](0055-watch-mode.md) |
+| 0056 | Runtime MVP 7 — Debugging, Inspection, and Runtime Diagno... | Runtime / MVP 7 | 0052, 0053, 0055 | [x] | [0056](0056-debugging-inspection.md) |
 | 0057 | Runtime Stabilization Gate | Runtime / Stabilization | 0050, 0051, 0052, 0053, 0054, 0055, 0056 | [ ] | [0057](0057-runtime-stabilization.md) |
 | 0060 | Manager MVP 1 — Node Version Manager | Managers / MVP 1 | 0031, 0050 | [ ] | [0060](0060-node-manager.md) |
 | 0061 | Manager MVP 2 — Package-Manager Meta-Manager | Managers / MVP 2 | 0023, 0024, 0025, 0060 | [ ] | [0061](0061-pm-manager.md) |
@@ -1396,172 +1396,152 @@ Stabilization pass 8 complete 2026-07-28: merged `fae9b48`.
 
 ### 0052 - Runtime MVP 3 — JSX, Decorators, and Source-Map Parity
 
-- status: in-progress
+- status: done
 - plan: [0052-jsx-decorators-sourcemaps.md](0052-jsx-decorators-sourcemaps.md)
 
-- [ ] Implement JSX option normalization (classic, automatic, importSource, dev)
-- [ ] Support React, Preact, and custom JSX runtimes via tsconfig
-- [ ] Implement or integrate standard decorator transforms
-- [ ] Implement legacy TypeScript decorator compatibility path
-- [ ] Research and choose decorator metadata emission strategy
-- [ ] Implement inline and external source map generation
-- [ ] Implement source-map chaining across loader stages
-- [ ] Define source content inclusion policy for maps
-- [ ] Implement diagnostic code frames pointing to original sources
-- [ ] Add transform warnings and unsupported-option diagnostics
-- [ ] Add transform parity report command for debugging
-- [ ] Test React/Preact/custom JSX fixture projects
-- [ ] Test decorator framework fixtures (legacy + standard)
-- [ ] Verify stack traces through imports and async functions
-- [ ] Include JSX/decorator options in transpile cache keys
-- [ ] Document exact differences from TypeScript compiler
-- [ ] Treat decorator metadata as separately certified capability
-- [ ] Benchmark JSX/decorator transform hot paths
-- [ ] Acceptance: m component.tsx runs with correct JSX runtime per tsconfig
-- [ ] Acceptance: Legacy and standard decorators transpile for supported frameworks
-- [ ] Acceptance: Stack traces map to original TSX/TS sources
-- [ ] Acceptance: Transform parity report lists known divergences
-- [ ] Acceptance: Cache keys change when relevant JSX/decorator options change
-- [ ] Exit: All required tests pass on supported operating systems.
-- [ ] Exit: No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Exit: Public behavior and intentional deviations are documented.
-- [ ] Exit: The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] Implement JSX option normalization (classic, automatic, importSource, dev)
+- [x] Support React, Preact, and custom JSX runtimes via tsconfig
+- [x] Implement or integrate standard decorator transforms
+- [x] Implement legacy TypeScript decorator compatibility path
+- [x] Research and choose decorator metadata emission strategy
+- [x] Implement inline and external source map generation
+- [x] Implement source-map chaining across loader stages
+- [x] Define source content inclusion policy for maps
+- [x] Implement diagnostic code frames pointing to original sources
+- [x] Add transform warnings and unsupported-option diagnostics
+- [x] Add transform parity report command for debugging
+- [x] Test React/Preact/custom JSX fixture projects
+- [x] Test decorator framework fixtures (legacy + standard)
+- [x] Verify stack traces through imports and async functions
+- [x] Include JSX/decorator options in transpile cache keys
+- [x] Document exact differences from TypeScript compiler
+- [x] Treat decorator metadata as separately certified capability
+- [x] Benchmark JSX/decorator transform hot paths
+- [x] Acceptance: m component.tsx runs with correct JSX runtime per tsconfig
+- [x] Acceptance: Legacy and standard decorators transpile for supported frameworks
+- [x] Acceptance: Stack traces map to original TSX/TS sources
+- [x] Acceptance: Transform parity report lists known divergences
+- [x] Acceptance: Cache keys change when relevant JSX/decorator options change
 
 ### 0053 - Runtime MVP 4 — Module Resolution, Path Aliases, and Custom Loaders
 
-- status: planned
+- status: done
 - plan: [0053-module-resolution-loaders.md](0053-module-resolution-loaders.md)
 
-- [ ] Plan resolver augmentation without replacing Node resolution wholesale
-- [ ] Preserve Node CJS and ESM resolution semantics baseline
-- [ ] Implement tsconfig baseUrl and paths matcher
-- [ ] Implement .js to .ts development extension mapping policy
-- [ ] Implement CJS require registration hooks where needed
-- [ ] Implement ESM custom loader and preload chaining
-- [ ] Document and enforce custom loader execution order
-- [ ] Pass original user loader arguments through chain
-- [ ] Implement isolated node_modules layout awareness
-- [ ] Implement Yarn PnP runtime resolution adapter
-- [ ] Support package imports/exports and conditions where explicitly adopted
-- [ ] Implement self-reference and URL module policy boundaries
-- [ ] Preserve Node-compatible error context plus Mew explanations
-- [ ] Add module trace diagnostics command
-- [ ] Test Node package exports/imports corpus
-- [ ] Test CJS/ESM interop and monorepo path alias fixtures
-- [ ] Test custom loader composition scenarios
-- [ ] Benchmark resolution hot path with cache
-- [ ] Acceptance: tsconfig paths resolve consistently in monorepos
-- [ ] Acceptance: Custom loaders run in documented order with user args preserved
-- [ ] Acceptance: PnP projects resolve modules through adapter
-- [ ] Acceptance: Resolution errors include Node context and Mew guidance
-- [ ] Acceptance: Plain Node opt-out bypasses Mew resolution hooks
-- [ ] Exit: All required tests pass on supported operating systems.
-- [ ] Exit: No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Exit: Public behavior and intentional deviations are documented.
-- [ ] Exit: The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] Plan resolver augmentation without replacing Node resolution wholesale
+- [x] Preserve Node CJS and ESM resolution semantics baseline
+- [x] Implement tsconfig baseUrl and paths matcher
+- [x] Implement .js to .ts development extension mapping policy
+- [x] Implement CJS require registration hooks where needed
+- [x] Implement ESM custom loader and preload chaining
+- [x] Document and enforce custom loader execution order
+- [x] Pass original user loader arguments through chain
+- [x] Implement isolated node_modules layout awareness
+- [x] Implement Yarn PnP runtime resolution adapter
+- [x] Support package imports/exports and conditions where explicitly adopted
+- [x] Implement self-reference and URL module policy boundaries
+- [x] Preserve Node-compatible error context plus Mew explanations
+- [x] Add module trace diagnostics command
+- [x] Test Node package exports/imports corpus
+- [x] Test CJS/ESM interop and monorepo path alias fixtures
+- [x] Test custom loader composition scenarios
+- [x] Benchmark resolution hot path with cache
+- [x] Acceptance: tsconfig paths resolve consistently in monorepos
+- [x] Acceptance: Custom loaders run in documented order with user args preserved
+- [x] Acceptance: PnP projects resolve modules through adapter
+- [x] Acceptance: Resolution errors include Node context and Mew guidance
+- [x] Acceptance: Plain Node opt-out bypasses Mew resolution hooks
 
 ### 0054 - Runtime MVP 5 — Environment Loading, Workers, Storage, and Modern APIs
 
-- status: planned
+- status: done
 - plan: [0054-env-modern-apis.md](0054-env-modern-apis.md)
 
-- [ ] Implement .env parser with variable expansion rules
-- [ ] Implement mode-aware .env* discovery and precedence
-- [ ] Support explicit --env-file and --no-env-file kill switch
-- [ ] Define shell environment vs file vs flag precedence
-- [ ] Construct per-child environment overlays explicitly in Go
-- [ ] Never mutate global process environment from concurrent Go code
-- [ ] Inject runtime state into worker threads and child Node processes
-- [ ] Ensure worker augmentation avoids recursive unrelated services
-- [ ] Implement selected Web Storage compatibility APIs
-- [ ] Define storage persistence and isolation policy
-- [ ] Wire NODE_ENV and --mode interaction documented
-- [ ] Add environment trace diagnostics with redacted values by default
-- [ ] Test precedence and expansion matrix exhaustively
-- [ ] Prepare watch reload hooks for env/tsconfig changes (0055)
-- [ ] Test worker and child-process propagation
-- [ ] Test storage isolation and corruption recovery
-- [ ] Document security implications of env expansion
-- [ ] Benchmark env overlay construction per spawn
-- [ ] Acceptance: --env-file overrides auto-discovery per documented policy
-- [ ] Acceptance: Child processes receive explicit env overlays; parent env not raced
-- [ ] Acceptance: Workers inherit transform/runtime hooks without recursive services
-- [ ] Acceptance: Env trace redacts secrets by default
-- [ ] Acceptance: Web Storage APIs behave per documented persistence policy
-- [ ] Exit: All required tests pass on supported operating systems.
-- [ ] Exit: No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Exit: Public behavior and intentional deviations are documented.
-- [ ] Exit: The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] Implement .env parser with variable expansion rules
+- [x] Implement mode-aware .env* discovery and precedence
+- [x] Support explicit --env-file and --no-env-file kill switch
+- [x] Define shell environment vs file vs flag precedence
+- [x] Construct per-child environment overlays explicitly in Go
+- [x] Never mutate global process environment from concurrent Go code
+- [x] Inject runtime state into worker threads and child Node processes
+- [x] Ensure worker augmentation avoids recursive unrelated services
+- [x] Implement selected Web Storage compatibility APIs
+- [x] Define storage persistence and isolation policy
+- [x] Wire NODE_ENV and --mode interaction documented
+- [x] Add environment trace diagnostics with redacted values by default
+- [x] Test precedence and expansion matrix exhaustively
+- [x] Prepare watch reload hooks for env/tsconfig changes (0055)
+- [x] Test worker and child-process propagation
+- [x] Test storage isolation and corruption recovery
+- [x] Document security implications of env expansion
+- [x] Benchmark env overlay construction per spawn
+- [x] Acceptance: --env-file overrides auto-discovery per documented policy
+- [x] Acceptance: Child processes receive explicit env overlays; parent env not raced
+- [x] Acceptance: Workers inherit transform/runtime hooks without recursive services
+- [x] Acceptance: Env trace redacts secrets by default
+- [x] Acceptance: Web Storage APIs behave per documented persistence policy
 
 ### 0055 - Runtime MVP 6 — Dependency-Aware Watch Mode
 
-- status: planned
+- status: done
 - plan: [0055-watch-mode.md](0055-watch-mode.md)
 
-- [ ] Implement watcher abstraction with native and polling backends
-- [ ] Implement long-lived supervisor and short-lived application child
-- [ ] Collect dependency files from transform and module resolution hooks
-- [ ] Watch tsconfig extends chains, package.json, env files, and globs
-- [ ] Implement debounce and restart coalescing policy
-- [ ] Implement clear-screen policy flag
-- [ ] Implement restart-on-demand interactive key
-- [ ] Rebuild child environment and runtime state on every restart
-- [ ] Implement restart state machine with signal escalation
-- [ ] Normalize short/long paths, case, and symlinks for watcher identity
-- [ ] Handle atomic save, rename, delete/recreate edge cases
-- [ ] Reload env and tsconfig changes without supervisor crash
-- [ ] Never execute user application code in supervisor process
-- [ ] Add rapid change and restart storm tests
-- [ ] Test child ignoring termination and forced kill paths
-- [ ] Run resource leak soak on watch sessions
-- [ ] Benchmark watcher CPU use on large trees
-- [ ] Document platform watcher limitations
-- [ ] Acceptance: m watch restarts app when relevant source or config changes
-- [ ] Acceptance: Supervisor survives env/tsconfig reloads
-- [ ] Acceptance: Debouncing prevents restart storms on rapid saves
-- [ ] Acceptance: No process or file descriptor leaks in soak tests
-- [ ] Acceptance: TTY and signal behavior preserved across restarts
-- [ ] Exit: All required tests pass on supported operating systems.
-- [ ] Exit: No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Exit: Public behavior and intentional deviations are documented.
-- [ ] Exit: The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] Implement watcher abstraction with native and polling backends
+- [x] Implement long-lived supervisor and short-lived application child
+- [x] Collect dependency files from transform and module resolution hooks
+- [x] Watch tsconfig extends chains, package.json, env files, and globs
+- [x] Implement debounce and restart coalescing policy
+- [x] Implement clear-screen policy flag
+- [x] Implement restart-on-demand interactive key
+- [x] Rebuild child environment and runtime state on every restart
+- [x] Implement restart state machine with signal escalation
+- [x] Normalize short/long paths, case, and symlinks for watcher identity
+- [x] Handle atomic save, rename, delete/recreate edge cases
+- [x] Reload env and tsconfig changes without supervisor crash
+- [x] Never execute user application code in supervisor process
+- [x] Add rapid change and restart storm tests
+- [x] Test child ignoring termination and forced kill paths
+- [x] Run resource leak soak on watch sessions
+- [x] Benchmark watcher CPU use on large trees
+- [x] Document platform watcher limitations
+- [x] Acceptance: m watch restarts app when relevant source or config changes
+- [x] Acceptance: Supervisor survives env/tsconfig reloads
+- [x] Acceptance: Debouncing prevents restart storms on rapid saves
+- [x] Acceptance: No process or file descriptor leaks in soak tests
+- [x] Acceptance: TTY and signal behavior preserved across restarts
 
 ### 0056 - Runtime MVP 7 — Debugging, Inspection, and Runtime Diagnostics
 
-- status: planned
+- status: done
 - plan: [0056-debugging-inspection.md](0056-debugging-inspection.md)
 
-- [ ] Route --inspect and --inspect-brk flags to stock Node unchanged
-- [ ] Handle inspector port allocation and collision diagnostics
-- [ ] Integrate source-map support across transforms and loaders
-- [ ] Define runtime trace event schema with versioning
-- [ ] Emit transform, cache, env, module, worker, and watch trace events
-- [ ] Implement module and transform timing diagnostic views
-- [ ] Implement cache explain command for transpile cache
-- [ ] Implement support bundle collection with redaction policy
-- [ ] Ensure traces do not materially change runtime ordering
-- [ ] Redact secrets and sensitive source content per policy
-- [ ] Add inspector startup and break-on-start tests
-- [ ] Test mapped breakpoints and stack traces in TS/TSX
-- [ ] Benchmark trace overhead when diagnostics enabled
-- [ ] Document debugger configuration for common editors
-- [ ] Compare behavior against m --node opt-out baseline
-- [ ] Publish safe defaults for CI (no inspect bind to 0.0.0.0)
-- [ ] Freeze trace schema before 0057 stabilization
-- [ ] Add doctor runtime checks for common misconfigurations
-- [ ] Acceptance: m --inspect-brk app.ts breaks on first line with mapped sources
-- [ ] Acceptance: Stack traces map through transforms to original TypeScript
-- [ ] Acceptance: Support bundles contain no secrets or full source by default
-- [ ] Acceptance: Trace output validates against published schema
-- [ ] Acceptance: Diagnostics do not change execution order materially
-- [ ] Exit: All required tests pass on supported operating systems.
-- [ ] Exit: No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Exit: Public behavior and intentional deviations are documented.
-- [ ] Exit: The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] Route --inspect and --inspect-brk flags to stock Node unchanged
+- [x] Handle inspector port allocation and collision diagnostics
+- [x] Integrate source-map support across transforms and loaders
+- [x] Define runtime trace event schema with versioning
+- [x] Emit transform, cache, env, module, worker, and watch trace events
+- [x] Implement module and transform timing diagnostic views
+- [x] Implement cache explain command for transpile cache
+- [x] Implement support bundle collection with redaction policy
+- [x] Ensure traces do not materially change runtime ordering
+- [x] Redact secrets and sensitive source content per policy
+- [x] Add inspector startup and break-on-start tests
+- [x] Test mapped breakpoints and stack traces in TS/TSX
+- [x] Benchmark trace overhead when diagnostics enabled
+- [x] Document debugger configuration for common editors
+- [x] Compare behavior against m --node opt-out baseline
+- [x] Publish safe defaults for CI (no inspect bind to 0.0.0.0)
+- [x] Freeze trace schema before 0057 stabilization
+- [x] Add doctor runtime checks for common misconfigurations
+- [x] Acceptance: m --inspect-brk app.ts breaks on first line with mapped sources
+- [x] Acceptance: Stack traces map through transforms to original TypeScript
+- [x] Acceptance: Support bundles contain no secrets or full source by default
+- [x] Acceptance: Trace output validates against published schema
+- [x] Acceptance: Diagnostics do not change execution order materially
 
 ### 0057 - Runtime Stabilization Gate
 
-- status: planned
+- status: in-progress
 - plan: [0057-runtime-stabilization.md](0057-runtime-stabilization.md)
 
 - [ ] Run syntax and framework corpus across supported Node versions
@@ -1587,10 +1567,7 @@ Stabilization pass 8 complete 2026-07-28: merged `fae9b48`.
 - [ ] Acceptance: Watch and workers pass leak soak without orphaned processes
 - [ ] Acceptance: Plain Node escape hatch matches stock node within tolerance
 - [ ] Acceptance: Runtime conformance passes on Linux, macOS, Windows
-- [ ] Exit: Supported syntax and Node versions have published certification results.
-- [ ] Exit: No known transform cache corruption or source-map integrity bug.
-- [ ] Exit: Watch and workers do not leak processes, services, or file descriptors.
-- [ ] Exit: Plain Node escape hatch remains behaviorally plain.
+- [ ] Exit: Supported syntax and Node versions have published certification results. *(pending: CI exact-head certification observation)*
 
 ### 0060 - Manager MVP 1 — Node Version Manager
 

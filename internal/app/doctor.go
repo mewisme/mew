@@ -351,11 +351,13 @@ func doctorCheckTransformHandshake(ctx context.Context, ac *Context) DoctorCheck
 		return check
 	}
 
-	// Close and collect any cleanup error as detail only.
+	// Close and report any cleanup error as a failure: a required
+	// check must not report OK when the session cannot be shut down.
 	if err := sess.Close(); err != nil {
-		check.Status = string(DoctorStatusOK)
-		check.Message = "transform handshake ok"
-		check.Details = fmt.Sprintf("cleanup error: %s", sanitizeErr(err))
+		check.Status = string(DoctorStatusFail)
+		check.Message = "transform handshake ok but cleanup failed"
+		check.Details = fmt.Sprintf("close error: %s", sanitizeErr(err))
+		check.Remediation = "verify transform service shutdown and resource availability"
 		return check
 	}
 

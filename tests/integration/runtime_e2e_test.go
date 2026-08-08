@@ -173,7 +173,7 @@ func TestRuntimeE2EExitCode(t *testing.T) {
 	}
 }
 
-// --- Zero augmentation, dispatch precedence, deferred extensions ---
+// --- Zero augmentation, dispatch precedence, unsupported extensions ---
 
 func TestRuntimeE2EZeroAugmentation(t *testing.T) {
 	skipWithoutNode(t)
@@ -210,8 +210,8 @@ func TestRuntimeE2EJSXDeferred(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("expected non-zero exit for .jsx, got out=%s", out)
 	}
-	if !strings.Contains(out, "0053") {
-		t.Fatalf("expected 0053 deferral message, got %q", out)
+	if !strings.Contains(out, "not yet supported") {
+		t.Fatalf("expected unsupported-extension message, got %q", out)
 	}
 }
 

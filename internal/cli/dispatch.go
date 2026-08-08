@@ -559,13 +559,14 @@ func ResolveDispatch(root *cobra.Command, phase PhaseAResult, cwd string, eff *c
 	// Detect runtime file selectors for direct execution (after scripts, before bins).
 	// Exact package scripts win over bare file names per documented dispatch precedence.
 	if RuntimeEnabled() && runtime.IsRuntimeFile(selector) {
-		// Deferred extensions (.jsx) → actionable plan-deferral message.
+		// Unsupported extensions (.jsx) → actionable not-yet-available message.
 		if plan, ok := runtime.IsNextPlanExt(selector); ok {
+			_ = plan // deferral key for future categorization
 			return DispatchResult{
 				Kind:      OutcomeUnknown,
 				Canonical: selector,
 				Err: apperr.New(apperr.RuntimeEntrypoint, "dispatch", selector,
-					fmt.Sprintf("%s: TypeScript JSX/TSX execution is planned for Mew plan %s; not yet available", selector, plan)),
+					fmt.Sprintf("%s: direct .jsx entrypoints are not yet supported; use .tsx for JSX with TypeScript", selector)),
 				DirectGateOn: directOn,
 			}
 		}

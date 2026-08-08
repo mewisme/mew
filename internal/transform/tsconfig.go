@@ -55,8 +55,8 @@ func (e *ConfigError) Unwrap() error {
 // NormalizedOptions collects transform-relevant tsconfig options.
 // Only options that affect transform output are included; options that
 // only affect type-checking (noEmit) are excluded.
-// baseUrl and paths affect module resolution (0052+) and are carried
-// for cache key stability.
+// baseUrl and paths affect module resolution and are carried for cache
+// key stability.
 
 // PathMapping is a single tsconfig paths entry in canonical order.
 // Pattern is the alias key (e.g. "@app/*", "@app/internal/*", "*").

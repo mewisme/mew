@@ -26,7 +26,7 @@ Documented as of 0052-0057 implementation. Each entry includes the limitation, i
 
 **Impact**: Projects using `@decorator` syntax in `.ts`/`.tsx` files work correctly. JS/JSX decorator support pending JS loader.
 
-**Resolution**: JS loader planned for 0053. Standard decorator transform via esbuild is already operational for TS sources.
+**Resolution**: Not yet available. Requires a JSX loader mode in the transform service.
 
 ## Loader Bridge
 
@@ -98,11 +98,11 @@ loader API.
 
 ### Inspector passthrough
 
-**Limitation**: `--inspect` and `--inspect-brk` flags are parsed, validated, and normalized by Mew (loopback-only bind policy by default, remote binding requires `MEW_EXPERIMENTAL_REMOTE_INSPECTOR=1`). The flags are then passed through to Node's V8 inspector. Mew does not integrate with the inspector protocol for source-map-aware debugging or breakpoint resolution in original TypeScript source. While stack traces are mapped via `--enable-source-maps`, the debugger does not translate breakpoints from TypeScript line numbers.
+**Limitation**: `--inspect` and `--inspect-brk` flags are parsed, validated, and normalized by Mew (loopback-only bind policy by default, remote binding requires `MEW_EXPERIMENTAL_REMOTE_INSPECTOR=1`). The flags are then passed through to Node's V8 inspector. Mew adds `--enable-source-maps` so that inline source maps are available to the inspector for stack traces. Mew does not intercept or rewrite the inspector protocol; breakpoint resolution relies on the debugger client consuming the source maps normally.
 
-**Impact**: Debugging TypeScript in Chrome DevTools or VS Code shows transformed JavaScript. Breakpoints set in TypeScript source may not resolve correctly. Stack traces in the debugger console DO show mapped source locations (via `--enable-source-maps`).
+**Impact**: Stack traces in the debugger console show mapped source locations (via `--enable-source-maps`). Breakpoints in TypeScript source depend on the debugger client's source-map support. Debugger-visible scripts include sourceMapURL fields pointing to inline source maps.
 
-**Resolution**: Source-map-aware debugging via inspector integration planned for Issue 26 (0060+).
+**Resolution**: Inspector flags are passed through by design. Source-map availability is tested via inspector e2e tests (0056).
 
 ## Transform Service
 
@@ -135,7 +135,7 @@ Node 16.x and earlier are unsupported. The minimum supported Node version is 18.
 
 ## Gated Features
 
-Features behind experimental flags (current as of 0052 development):
+Features behind experimental flags (current as of 0057 development):
 
 | Feature | Gate | Status |
 |---|---|---|
