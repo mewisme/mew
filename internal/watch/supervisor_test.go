@@ -742,7 +742,7 @@ func TestSupervisorWatcherChannelClosure(t *testing.T) {
 
 	// Close the watcher's channels to simulate unexpected watcher
 	// failure. This triggers watcherDone in the supervisor.
-	fw.Close()
+	_ = fw.Close()
 
 	select {
 	case err := <-errCh:

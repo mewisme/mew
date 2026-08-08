@@ -252,7 +252,7 @@ func validKey(key string) bool {
 	}
 	for i := 0; i < len(key); i++ {
 		c := key[i]
-		if i == 0 && !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_') {
+		if i == 0 && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && c != '_' {
 			return false
 		}
 		if !isIdentByte(c) {

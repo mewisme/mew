@@ -94,7 +94,3 @@ func writeFile(t *testing.T, dir, name, content string) {
 }
 
 // fixturePath returns the absolute path to a repository fixture.
-func fixturePath(t *testing.T, parts ...string) string {
-	t.Helper()
-	return filepath.Join(append([]string{testkit.ModuleRoot(t), "fixtures"}, parts...)...)
-}

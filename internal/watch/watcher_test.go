@@ -183,7 +183,7 @@ func TestNativeWatcherCloseDrains(t *testing.T) {
 	}
 
 	if err := w.Add(dir); err != nil {
-		w.Close()
+		_ = w.Close()
 		t.Fatalf("Add: %v", err)
 	}
 
@@ -325,7 +325,7 @@ func TestPollingWatcherCloseDuringBackpressure(t *testing.T) {
 	// Close must still succeed promptly.
 	done := make(chan struct{})
 	go func() {
-		pw.Close()
+		_ = pw.Close()
 		close(done)
 	}()
 	select {

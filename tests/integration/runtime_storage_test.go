@@ -171,7 +171,7 @@ func TestRuntimeStorageCorruptRecovery(t *testing.T) {
 		t.Skip("MEW_CACHE_DIR not set")
 	}
 	var corruptPath string
-	filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(cacheDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || corruptPath != "" {
 			return nil
 		}

@@ -557,16 +557,3 @@ func TestBuildArgvNoCustomLoaders(t *testing.T) {
 		t.Fatalf("expected preload.mjs in argv: %v", argv)
 	}
 }
-
-func environToMap(env []string) map[string]string {
-	m := make(map[string]string, len(env))
-	for _, kv := range env {
-		for i := 0; i < len(kv); i++ {
-			if kv[i] == '=' {
-				m[kv[:i]] = kv[i+1:]
-				break
-			}
-		}
-	}
-	return m
-}

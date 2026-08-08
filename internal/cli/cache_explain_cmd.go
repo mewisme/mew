@@ -136,10 +136,9 @@ func cacheExplainTable(result *transform.CacheExplainResult) presentation.TableM
 func cacheEntrySummary(entry *transform.CacheEntryExplain) presentation.Summary {
 	st := presentation.StatusSuccess
 	title := fmt.Sprintf("Cache entry %s: %s", entry.Key[:min(12, len(entry.Key))], entry.Disposition)
-	if entry.Disposition == transform.CacheDispositionCorrupt || entry.Disposition == transform.CacheDispositionUnreadable {
-		st = presentation.StatusError
-		title = fmt.Sprintf("Cache entry %s: %s", entry.Key[:min(12, len(entry.Key))], entry.Disposition)
-	} else if entry.Disposition == transform.CacheDispositionSchemaStale || entry.Disposition == transform.CacheDispositionOrphan {
+	switch entry.Disposition {
+	case transform.CacheDispositionCorrupt, transform.CacheDispositionUnreadable,
+		transform.CacheDispositionSchemaStale, transform.CacheDispositionOrphan:
 		st = presentation.StatusError
 	}
 	return presentation.Summary{

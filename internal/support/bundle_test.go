@@ -170,8 +170,9 @@ func TestConfigMetaCollector(t *testing.T) {
 		}
 		// Keys should not contain secrets embedded by the sanitizer.
 		if strings.Contains(k, "TOKEN") {
-			// It's ok for non-secret key names to appear; the value
-			// is never in the DTO.
+			// Key name contains TOKEN but the value is never in the
+			// DTO; this is not a leak.
+			_ = k
 		}
 	}
 	if !foundCache {

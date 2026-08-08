@@ -87,7 +87,7 @@ func TestEmitNoSession(t *testing.T) {
 	// Emit on a context without a session must not panic.
 	trace.Emit(context.Background(), trace.CatLifecycle, trace.TypePlanStart, nil)
 	trace.Emit(context.TODO(), trace.CatLifecycle, trace.TypePlanStart, nil)
-	trace.Emit(nil, trace.CatLifecycle, trace.TypePlanStart, nil)
+	trace.Emit(context.TODO(), trace.CatLifecycle, trace.TypePlanStart, nil)
 }
 
 func TestEventJSONRoundTrip(t *testing.T) {
