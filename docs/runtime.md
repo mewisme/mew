@@ -210,21 +210,80 @@ configuration (separate tsconfig per worker) is not yet supported.
 
 ### Child processes
 
-Mew does not automatically inject augmentation into child processes created
-via `child_process.spawn()`, `exec()`, or `execFile()`. Unrelated child
-processes receive a clean environment (credentials are already stripped by
-the credential grabber before user code executes).
+Mew injects runtime augmentation into supported child Node processes so they
+can import and execute TypeScript through the same parent transform session.
+Credentials are placed in the child's environment and stripped by the injected
+credential-grabber before any user code executes — the same security model as
+the parent process.
 
-- `child_process.fork()` inherits `process.execArgv` from the parent,
-  including Mew preloads. The child process re-runs preload scripts (Web
-  Storage polyfill) but does **not** receive transform credentials —
-  TypeScript support is not active in forked children.
-- For an intentionally augmented Node child, invoke `m` from the child:
-  `spawn('m', ['child.ts'])`. This creates a fresh transform session with
-  its own scoped credentials.
-- Non-Node executables spawned via `spawn()`/`exec()` receive the parent's
-  environment (minus Mew-private bootstrap variables) and no Mew
-  augmentation.
+**Supported child APIs:**
+
+| API | Augmented? | Notes |
+|---|---|---|
+| `child_process.fork()` | Yes | `execArgv` augmented with credential-grabber. User `execArgv` preserved in order after grabber. Credentials injected into `env`. |
+| `spawn(process.execPath, ...)` | Yes | Detected by canonical executable path match. `--require` prepended to args. Credentials injected into `env`. |
+| `execFile(process.execPath, ...)` | Yes | Same detection and augmentation as `spawn`. |
+| `exec(command, ...)` | No | Shell-mediated; reliable Node detection is infeasible. |
+| Non-Node subprocesses | No | Not augmented. User-supplied `MEW_TRANSFORM_*` keys in explicit `env` are stripped (defense in depth). |
+
+**Design:**
+
+- The credential-grabber monkey-patches `child_process.fork`, `spawn`, and
+  `execFile` to detect Node children and inject:
+  1. `--require <credential-grabber.cjs>` as the first `--require` (before
+     any user flags), so credentials are stripped before user code.
+  2. `MEW_TRANSFORM_*` environment variables carrying the parent's transform
+     endpoint, token, options, and config.
+  3. `--enable-source-maps` if the parent process has it enabled.
+- The child's credential-grabber runs first, captures the `MEW_TRANSFORM_*`
+  vars, strips them from `process.env`, and registers `ts-loader.mjs` via
+  `module.register()` — exactly as the parent does.
+- Duplicate injection is prevented: if the credential-grabber path is already
+  in the child's `execArgv`/args, it is not added again. Credentials are
+  always injected into the environment (the parent's `process.env` is already
+  stripped).
+- `NODE_OPTIONS` in the child's environment is sanitized: `--require`,
+  `--import`, `--loader`, and `--experimental-loader` flags are removed
+  (Issue 33 policy) to prevent user preloads from executing before
+  credential isolation.
+
+**Capabilities propagated to supported children:**
+
+- TypeScript import/execute (`.ts`, `.tsx`, `.mts`, `.cts`)
+- tsconfig path resolution
+- Extension substitution (`.js` → `.ts`, `.mjs` → `.mts`, `.cjs` → `.cts`)
+- Source maps (when parent has `--enable-source-maps`)
+- Module format detection (`.mts` → ESM, `.cts` → CJS, `.ts`/`.tsx` →
+  nearest `package.json` `type`)
+
+**Capabilities NOT propagated:**
+
+- Web Storage (`localStorage`/`sessionStorage` preloads)
+- Inspector settings
+- Watch supervision
+- Custom user loaders (each child must register its own `--loader`)
+
+**Nested children:**
+
+Supported children can create their own children (grandchild processes)
+with full TypeScript support. Propagation is scoped to the active parent
+transform session. Duplicate bootstrap flags do not accumulate across
+generations — the credential-grabber detects it is already present in
+`execArgv` and skips re-injection.
+
+**`--node` mode:**
+
+When `--node` (zero augmentation) is active, child processes are not
+augmented. The credential-grabber is not loaded, so no monkey-patching
+occurs. Child processes behave as stock Node children.
+
+**Security:**
+
+Credentials are transported through the same `MEW_TRANSFORM_*` environment
+variables used for the parent process. The injected credential-grabber runs
+as the first `--require`, so it captures and strips these variables before
+any user code executes. User-supplied `MEW_TRANSFORM_*` keys in child `env`
+are removed (case-insensitively). Unsafe `NODE_OPTIONS` flags are stripped.
 
 ### Web Storage
 
@@ -270,7 +329,7 @@ In-memory `Map`-backed storage, scoped to one JavaScript realm.
 | Persistence | None (dies with the process) |
 | Workers | Each worker thread gets an independent sessionStorage |
 | Parent/worker | No shared state between parent and worker |
-| Child processes | Not inherited (unrelated children get clean env) |
+| Child processes | Not inherited (credentials stripped, non-Node children receive clean env) |
 
 #### Worker and child process visibility
 
@@ -279,11 +338,18 @@ In-memory `Map`-backed storage, scoped to one JavaScript realm.
   namespace) and its own `sessionStorage` (independent `Map`).
   Concurrent writes to `localStorage` from multiple workers use
   last-writer-wins atomic rename — no corruption, but no merge either.
-- **Forked children** (`child_process.fork()`): Inherit preloads, get
-  their own `localStorage` (same file) and independent
-  `sessionStorage`.
-- **Unrelated children** (`spawn`/`exec`): No storage globals (clean
-  environment). No localStorage data leakage.
+- **Forked children** (`child_process.fork()`): Inherit preloads and
+  TypeScript support via `execArgv` + credential injection. Get their
+  own `localStorage` (same file) and independent `sessionStorage`.
+  TypeScript import, tsconfig paths, and extension substitution all
+  work in forked children.
+- **spawn/execFile children** (`spawn(process.execPath, ...)`,
+  `execFile(process.execPath, ...)`): Receive TypeScript support
+  via injected `--require` + credentials. Preloads (Web Storage) are
+  not injected by the monkey-patch but are inherited when no explicit
+  `execArgv` override is provided (via parent's `process.execArgv`).
+- **Unrelated children** (non-Node `spawn`/`exec`, `exec(command)`):
+  No augmentation. Clean environment (credentials stripped).
 
 #### Limitations
 
