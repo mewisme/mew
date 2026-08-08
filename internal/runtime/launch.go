@@ -28,6 +28,18 @@ func Plan(ctx context.Context, req LaunchRequest, eff *config.Effective) (*Launc
 		return nil, apperr.New(apperr.RuntimeEntrypoint, "runtime.plan", "", "empty entrypoint")
 	}
 
+	// Early NODE_OPTIONS validation on the host environment, before any
+	// attempt to invoke Node (including version detection). A malformed
+	// NODE_OPTIONS value can cause node --version to fail with a cryptic
+	// error; we validate first to produce a clear rejection.
+	// The full final-environment validation runs in Launch() after all
+	// overlays and plan changes have been composed.
+	if req.AugmentationMode != AugmentNone {
+		if err := ValidateNodeEnv(os.Environ()); err != nil {
+			return nil, err
+		}
+	}
+
 	nodeInst, err := node.Discover(ctx, node.Request{
 		WorkingDir:        req.WorkingDir,
 		ExplicitCandidate: "",
@@ -453,23 +465,120 @@ func Launch(ctx context.Context, plan *LaunchPlan, req LaunchRequest) error {
 	return nil
 }
 
-// ValidateNodeEnv rejects NODE_OPTIONS containing --require or --import.
-// Node processes NODE_OPTIONS before CLI args, so user --require in
-// NODE_OPTIONS would run before the credential grabber and could read
-// transform credentials from process.env.
+// nodeOptionsUnsafe lists NODE_OPTIONS flags that can execute user-controlled
+// code before the Node entrypoint. Any flag in this set — whether bare, with
+// an attached value (--flag=value), or consuming the next token — is rejected
+// in augmented launches.
+//
+// Review this set when Node adds new executable startup flags to NODE_OPTIONS.
+var nodeOptionsUnsafe = map[string]bool{
+	"--require":             true,
+	"--import":              true,
+	"--loader":              true,
+	"--experimental-loader": true,
+}
+
+// ValidateNodeEnv rejects NODE_OPTIONS values that contain startup flags
+// capable of executing user code before Mew's credential isolation boundary.
+//
+// Blocked flags: --require, -r, --import, --loader, --experimental-loader.
+// Value forms like --flag=value and -rvalue are detected. Harmless options
+// whose value happens to contain a blocked flag name (e.g.
+// --title=my--require-app) are not rejected.
+//
+// Fail-closed: malformed or ambiguous input that could conceal an executable
+// preload is rejected.
 func ValidateNodeEnv(env []string) error {
 	for _, kv := range env {
-		const prefix = "NODE_OPTIONS="
-		if !strings.HasPrefix(kv, prefix) {
+		eq := strings.IndexByte(kv, '=')
+		if eq < 0 {
 			continue
 		}
-		val := kv[len(prefix):]
-		if strings.Contains(val, "--require") || strings.Contains(val, "--import") {
+		// Case-insensitive key for Windows; Node only honors the exact
+		// spelling on Unix, but validating both is harmless.
+		if !strings.EqualFold(kv[:eq], "NODE_OPTIONS") {
+			continue
+		}
+		val := kv[eq+1:]
+		if unsafe, detail := validateNodeOptions(val); unsafe {
 			return apperr.New(apperr.Usage, "runtime.launch", "",
-				"NODE_OPTIONS contains --require or --import, which would execute before credential isolation; pass these flags as CLI arguments instead")
+				"NODE_OPTIONS contains "+detail+", which would execute before credential isolation; pass these flags as CLI arguments instead")
 		}
 	}
 	return nil
+}
+
+// validateNodeOptions tokenizes a NODE_OPTIONS value and reports whether it
+// contains any unsafe startup-execution flag.
+//
+// Tokenization matches Node's own whitespace-split semantics: no shell-style
+// quoting or escaping is recognised.
+func validateNodeOptions(val string) (unsafe bool, detail string) {
+	toks := tokenizeNodeOptions(val)
+
+	// Was the previous token an unsafe flag that consumes the next
+	// whitespace-separated token as its value?
+	var needValue bool
+	var prevFlag string
+
+	for _, tok := range toks {
+		if needValue {
+			return true, prevFlag + " <value>"
+		}
+		needValue = false
+
+		if strings.HasPrefix(tok, "--") {
+			name := tok
+			if idx := strings.IndexByte(tok, '='); idx >= 0 {
+				name = tok[:idx]
+			}
+			if nodeOptionsUnsafe[name] {
+				if strings.IndexByte(tok, '=') >= 0 {
+					return true, name + "=<value>"
+				}
+				prevFlag = name
+				needValue = true
+			}
+		} else if strings.HasPrefix(tok, "-") && !strings.HasPrefix(tok, "--") {
+			// Short flags. -r (alias for --require) takes a value.
+			// -rFOO form attaches the value directly.
+			if len(tok) >= 2 && tok[1] == 'r' {
+				if len(tok) > 2 {
+					return true, "-r <value>"
+				}
+				prevFlag = "-r"
+				needValue = true
+			}
+		}
+	}
+
+	if needValue {
+		return true, prevFlag + " <value>"
+	}
+	return false, ""
+}
+
+// tokenizeNodeOptions splits a NODE_OPTIONS value on whitespace, matching
+// Node's own tokenization. No quoting or escaping is applied.
+func tokenizeNodeOptions(val string) []string {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return nil
+	}
+	var toks []string
+	start := 0
+	for i := 0; i < len(val); i++ {
+		if val[i] == ' ' || val[i] == '\t' {
+			if i > start {
+				toks = append(toks, val[start:i])
+			}
+			start = i + 1
+		}
+	}
+	if start < len(val) {
+		toks = append(toks, val[start:])
+	}
+	return toks
 }
 
 func buildEnv(envOverlay []string, planEnvChanges []string) []string {

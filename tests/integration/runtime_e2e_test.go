@@ -606,6 +606,180 @@ func TestRuntimeE2ENodeOptionsImportRejected(t *testing.T) {
 	}
 }
 
+// TestRuntimeE2ENodeOptionsShortRequireRejected verifies the -r bypass is closed.
+func TestRuntimeE2ENodeOptionsShortRequireRejected(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "-r ./evil.cjs")
+	code, out := runMWithRuntime(t, proj, "hello.ts")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for NODE_OPTIONS with -r, got out=%s", out)
+	}
+	if !strings.Contains(out, "-r") {
+		t.Fatalf("expected -r rejection message, got %q", out)
+	}
+}
+
+// TestRuntimeE2ENodeOptionsCompactRequireRejected verifies -r./evil.cjs is blocked.
+// Node >= 20 rejects the compact form in NODE_OPTIONS itself (exit 9);
+// older Node versions may accept it, in which case Mew's parser catches it.
+func TestRuntimeE2ENodeOptionsCompactRequireRejected(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "-r./evil.cjs")
+	code, out := runMWithRuntime(t, proj, "hello.ts")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for NODE_OPTIONS with -r./evil.cjs, got out=%s", out)
+	}
+	// Either Mew's validator or Node's own NODE_OPTIONS check rejects this.
+	if !strings.Contains(out, "-r") && !strings.Contains(out, "NODE_OPTIONS") {
+		t.Fatalf("expected rejection (Mew or Node) for -r./evil.cjs, got %q", out)
+	}
+}
+
+// TestRuntimeE2ENodeOptionsRequireEqualsRejected verifies --require= form blocked.
+func TestRuntimeE2ENodeOptionsRequireEqualsRejected(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "--require=./evil.cjs")
+	code, out := runMWithRuntime(t, proj, "hello.ts")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for NODE_OPTIONS with --require=, got out=%s", out)
+	}
+	if !strings.Contains(out, "NODE_OPTIONS") && !strings.Contains(out, "--require") {
+		t.Fatalf("expected --require rejection message, got %q", out)
+	}
+}
+
+// TestRuntimeE2ENodeOptionsImportEqualsRejected verifies --import= form blocked.
+func TestRuntimeE2ENodeOptionsImportEqualsRejected(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "--import=./evil.mjs")
+	code, out := runMWithRuntime(t, proj, "hello.js")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for NODE_OPTIONS with --import=, got out=%s", out)
+	}
+	if !strings.Contains(out, "NODE_OPTIONS") && !strings.Contains(out, "--import") {
+		t.Fatalf("expected --import rejection message, got %q", out)
+	}
+}
+
+// TestRuntimeE2ENodeOptionsLoaderRejected verifies --loader in NODE_OPTIONS blocked.
+func TestRuntimeE2ENodeOptionsLoaderRejected(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "--loader ./evil.mjs")
+	code, out := runMWithRuntime(t, proj, "hello.js")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for NODE_OPTIONS with --loader, got out=%s", out)
+	}
+	if !strings.Contains(out, "NODE_OPTIONS") && !strings.Contains(out, "--loader") {
+		t.Fatalf("expected --loader rejection message, got %q", out)
+	}
+}
+
+// TestRuntimeE2ENodeOptionsLoaderEqualsRejected verifies --loader= form blocked.
+func TestRuntimeE2ENodeOptionsLoaderEqualsRejected(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "--loader=./evil.mjs")
+	code, out := runMWithRuntime(t, proj, "hello.js")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for NODE_OPTIONS with --loader=, got out=%s", out)
+	}
+	if !strings.Contains(out, "NODE_OPTIONS") && !strings.Contains(out, "--loader") {
+		t.Fatalf("expected --loader rejection message, got %q", out)
+	}
+}
+
+// TestRuntimeE2ENodeOptionsExperimentalLoaderRejected verifies --experimental-loader blocked.
+func TestRuntimeE2ENodeOptionsExperimentalLoaderRejected(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "--experimental-loader ./evil.mjs")
+	code, out := runMWithRuntime(t, proj, "hello.js")
+	if code == 0 {
+		t.Fatalf("expected non-zero exit for NODE_OPTIONS with --experimental-loader, got out=%s", out)
+	}
+	if !strings.Contains(out, "NODE_OPTIONS") && !strings.Contains(out, "--experimental-loader") {
+		t.Fatalf("expected --experimental-loader rejection message, got %q", out)
+	}
+}
+
+// TestRuntimeE2ENodeOptionsSafeStillWorks verifies safe NODE_OPTIONS still accepted.
+func TestRuntimeE2ENodeOptionsSafeStillWorks(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "--max-old-space-size=4096 --no-warnings")
+	code, _ := runMWithRuntime(t, proj, "hello.ts")
+	if code != 0 {
+		t.Fatalf("expected zero exit for safe NODE_OPTIONS, got code=%d", code)
+	}
+}
+
+// TestRuntimeE2ENodeOptionsSafeSubstringNotRejected verifies --require in a value
+// (e.g. --title=my--require-app) is not falsely rejected.
+func TestRuntimeE2ENodeOptionsSafeSubstringNotRejected(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	t.Setenv("NODE_OPTIONS", "--title=my--require-app --max-old-space-size=4096")
+	code, _ := runMWithRuntime(t, proj, "hello.ts")
+	if code != 0 {
+		t.Fatalf("expected zero exit for harmless --require substring, got code=%d", code)
+	}
+}
+
+// TestRuntimeE2ENodeModeNativeNodeOptions verifies --node mode allows
+// native NODE_OPTIONS usage with --require (no Mew credentials to protect).
+func TestRuntimeE2ENodeModeNativeNodeOptions(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	writeFile(t, filepath.Join(proj, "native-probe.cjs"),
+		"var fs = require(\"fs\");\n"+
+			"fs.writeFileSync(\"output.txt\", \"native-preload-ran\");\n")
+	t.Setenv("NODE_OPTIONS", "--require ./native-probe.cjs")
+	code, _ := runMWithRuntime(t, proj, "--node", "hello.js")
+	if code != 0 {
+		t.Fatalf("expected zero exit for --node with native NODE_OPTIONS, got code=%d", code)
+	}
+	out := readOutput(t, proj)
+	if out != "native-preload-ran" {
+		t.Fatalf("expected native preload to run in --node mode, got %q", out)
+	}
+}
+
+// TestRuntimeE2ECredentialGrabberRunsBeforeUserCLIPreload verifies Mew's
+// credential-grabber strips env before permitted user CLI --require preloads.
+func TestRuntimeE2ECredentialGrabberRunsBeforeUserCLIPreload(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	writeFile(t, filepath.Join(proj, "user-preload-env-check.cjs"),
+		"var fs = require(\"fs\");\n"+
+			"var results = [];\n"+
+			"results.push('token='+(process.env.MEW_TRANSFORM_TOKEN || 'absent'));\n"+
+			"results.push('endpoint='+(process.env.MEW_TRANSFORM_ENDPOINT || 'absent'));\n"+
+			"fs.writeFileSync(\"output.txt\", results.join(\"\\n\"));\n")
+	code, _ := runMWithRuntime(t, proj, "node-args", "--", "--require", "./user-preload-env-check.cjs", "hello.ts")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			t.Fatalf("malformed output line: %q", line)
+		}
+		if parts[1] != "absent" {
+			t.Fatalf("%s leaked into CLI --require preload: got %q, want 'absent'", parts[0], parts[1])
+		}
+	}
+}
+
 func TestRuntimeE2ENodeArgsRequireStillWorks(t *testing.T) {
 	skipWithoutNode(t)
 	proj := runtimeE2EFixture(t)

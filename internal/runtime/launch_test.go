@@ -252,6 +252,28 @@ func TestValidateNodeEnvRejectsRequire(t *testing.T) {
 	}
 }
 
+func TestValidateNodeEnvRejectsRequireShort(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=-r ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with -r")
+	}
+}
+
+func TestValidateNodeEnvRejectsRequireCompact(t *testing.T) {
+	// -r./evil.js — Node accepts compact short-flag form.
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=-r./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with -r./evil.js")
+	}
+}
+
+func TestValidateNodeEnvRejectsRequireEquals(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--require=./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --require=value")
+	}
+}
+
 func TestValidateNodeEnvRejectsImport(t *testing.T) {
 	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--import ./evil.mjs"})
 	if err == nil {
@@ -259,10 +281,134 @@ func TestValidateNodeEnvRejectsImport(t *testing.T) {
 	}
 }
 
+func TestValidateNodeEnvRejectsImportEquals(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--import=./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --import=value")
+	}
+}
+
+func TestValidateNodeEnvRejectsLoader(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--loader ./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --loader")
+	}
+}
+
+func TestValidateNodeEnvRejectsLoaderEquals(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--loader=./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --loader=value")
+	}
+}
+
+func TestValidateNodeEnvRejectsExperimentalLoader(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-loader ./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --experimental-loader")
+	}
+}
+
+func TestValidateNodeEnvRejectsExperimentalLoaderEquals(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-loader=./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --experimental-loader=value")
+	}
+}
+
+func TestValidateNodeEnvRejectsUnsafeAmongSafe(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--max-old-space-size=4096 --no-warnings --require ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for mixed safe+unsafe NODE_OPTIONS")
+	}
+}
+
+func TestValidateNodeEnvRejectsShortAmongSafe(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--no-warnings -r ./evil.js --max-old-space-size=4096"})
+	if err == nil {
+		t.Fatal("expected error for -r among safe options")
+	}
+}
+
+func TestValidateNodeEnvRejectsTrailingRequire(t *testing.T) {
+	// --require with no value: fail-closed.
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--require"})
+	if err == nil {
+		t.Fatal("expected error for trailing --require with no value")
+	}
+}
+
+func TestValidateNodeEnvRejectsTrailingShort(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=-r"})
+	if err == nil {
+		t.Fatal("expected error for trailing -r with no value")
+	}
+}
+
+func TestValidateNodeEnvRejectsTrailingImport(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--import"})
+	if err == nil {
+		t.Fatal("expected error for trailing --import with no value")
+	}
+}
+
+func TestValidateNodeEnvRejectsCaseInsensitiveKey(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"node_options=--require ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for case-insensitive NODE_OPTIONS key")
+	}
+}
+
+func TestValidateNodeEnvRejectsMultipleEntries(t *testing.T) {
+	env := []string{
+		"NODE_OPTIONS=--max-old-space-size=4096",
+		"NODE_OPTIONS=--require ./evil.js",
+	}
+	if err := runtime.ValidateNodeEnv(env); err == nil {
+		t.Fatal("expected error when second NODE_OPTIONS entry is unsafe")
+	}
+}
+
 func TestValidateNodeEnvAllowsSafeOptions(t *testing.T) {
 	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--max-old-space-size=4096 --no-warnings"})
 	if err != nil {
 		t.Fatalf("unexpected error for safe NODE_OPTIONS: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsHarmlessSubstring(t *testing.T) {
+	// Value containing --require as a substring is NOT a blocked flag.
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--title=my--require-app --max-old-space-size=4096"})
+	if err != nil {
+		t.Fatalf("unexpected error for harmless --require substring: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsInspectorFlags(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--inspect --inspect-brk --max-old-space-size=4096"})
+	if err != nil {
+		t.Fatalf("unexpected error for inspector flags: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsMemoryAndWarningFlags(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--max-old-space-size=8192 --max-semi-space-size=64 --no-warnings --trace-warnings --throw-deprecation"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsEmptyValue(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS="})
+	if err != nil {
+		t.Fatalf("unexpected error for empty NODE_OPTIONS: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsWhitespaceOnly(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=   \t  "})
+	if err != nil {
+		t.Fatalf("unexpected error for whitespace-only NODE_OPTIONS: %v", err)
 	}
 }
 
@@ -277,6 +423,55 @@ func TestValidateNodeEnvEmptyEnv(t *testing.T) {
 	err := runtime.ValidateNodeEnv(nil)
 	if err != nil {
 		t.Fatalf("unexpected error for nil env: %v", err)
+	}
+}
+
+func TestValidateNodeEnvRejectsLeadingWhitespace(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=  --require ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error with leading whitespace before --require")
+	}
+}
+
+func TestValidateNodeEnvRejectsTabSeparated(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--require\t./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for tab-separated --require")
+	}
+}
+
+func TestValidateNodeEnvRejectsMultiSpaceSeparator(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--require    ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for multi-space-separated --require")
+	}
+}
+
+func TestValidateNodeEnvAllowsSafeLoaderLike(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-import-meta-resolve --no-warnings"})
+	if err != nil {
+		t.Fatalf("unexpected error for experimental-import-meta-resolve: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsSafeRequireLike(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-require-module --no-warnings"})
+	if err != nil {
+		t.Fatalf("unexpected error for experimental-require-module: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsExperimentalWasm(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-wasm-modules"})
+	if err != nil {
+		t.Fatalf("unexpected error for --experimental-wasm-modules: %v", err)
+	}
+}
+
+func TestValidateNodeEnvRejectsLoaderBeforeSafe(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--loader=./evil.mjs --no-warnings"})
+	if err == nil {
+		t.Fatal("expected error for --loader= before safe options")
 	}
 }
 
