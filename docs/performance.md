@@ -112,6 +112,84 @@ Soak repeated installs:
 python tools/soak/install_loop.py --count 10 --mode cold
 ```
 
+## `m bench runtime`
+
+Structured runtime benchmark with isolated cache/state:
+
+```text
+m bench runtime --cold --warm             # cold + warm measurements
+m bench runtime --warm --samples 5        # warm only, 5 samples
+m bench runtime --cold --json             # JSON output
+m bench runtime --warm --compare path     # baseline comparison
+```
+
+All state (cache, store, config, temp) is isolated in a bench-owned
+temporary directory. The user's real Mew cache is never mutated.
+
+### Metrics
+
+| ID | Unit | Category | Description |
+|----|------|----------|-------------|
+| `runtime.startup.latency` | ns | n/a | `runtime.Plan` construction (Node launch plan) |
+| `runtime.transform.latency` | ns | cold, warm | TypeScript transform latency |
+| `runtime.execution.walltime` | ns | warm | `m run` process wall-clock time |
+
+**Cold** measurement: bench-owned transform cache is cleared before timing.
+**Warm** measurement: cache is primed, then cache-hit path is timed.
+
+### Sampling
+
+`--samples N` measured iterations (default 5). `--warmup N` discarded
+warmup iterations (default 1). Warmup samples are excluded from aggregates.
+
+Aggregates: median, min, max computed deterministically from raw samples.
+Zero samples, negative durations, and NaN/Inf values fail the benchmark.
+
+### Baseline comparison
+
+```text
+m bench runtime --warm --compare benchmarks/runtime-baseline.json
+```
+
+Baseline schema v1. Comparison checks:
+- Schema version, OS, and arch must match
+- Every current metric must exist in baseline with matching unit
+- Duplicate metric IDs in baseline fail
+- 10% default regression threshold (configurable in baseline)
+
+Output includes per-metric delta, threshold, and verdict
+(`pass` / `regression` / `improvement`). Overall status is `regression`
+if any required metric exceeds threshold.
+
+### JSON schema
+
+```json
+{
+  "schemaVersion": 1,
+  "environment": { "goVersion": "...", "os": "...", "arch": "...", "logicalCpus": 4 },
+  "cold": true, "warm": true,
+  "samples": 5, "warmup": 1,
+  "measurements": [
+    {
+      "id": "runtime.transform.latency",
+      "unit": "ns",
+      "category": "cold",
+      "rawSamplesNs": [500000, 520000, 510000],
+      "aggregate": { "medianNs": 510000, "minNs": 500000, "maxNs": 520000 },
+      "sampleCount": 3, "warmupCount": 1
+    }
+  ]
+}
+```
+
+Human output derives from the same typed model.
+
+### Limitations
+
+Wall-clock measurements on shared hardware are inherently noisy. Baseline
+comparison uses generous default thresholds suitable for developer laptops.
+CI baselines should be captured on dedicated, quiesced runners.
+
 ## Package-level benchmarks
 
 Lower-level `go test -bench` suites (transaction, resolver, store, linker) are

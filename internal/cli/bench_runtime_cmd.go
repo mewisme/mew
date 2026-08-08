@@ -1,137 +1,82 @@
 package cli
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/mewisme/mew/internal/app/benchruntime"
 	"github.com/mewisme/mew/internal/apperr"
-	"github.com/mewisme/mew/internal/config"
 )
-
-// runtimeBenchResult is the structured output for m benchmark runtime --json.
-type runtimeBenchResult struct {
-	SchemaVersion int                     `json:"schemaVersion"`
-	Packages      []string                `json:"packages"`
-	Cold          bool                    `json:"cold"`
-	Environment   runtimeBenchEnv         `json:"environment"`
-	Results       []runtimeBenchPkgResult `json:"results"`
-}
-
-type runtimeBenchEnv struct {
-	OS          string `json:"os"`
-	Arch        string `json:"arch"`
-	GoVersion   string `json:"goVersion"`
-	LogicalCPUs int    `json:"logicalCpus"`
-}
-
-type runtimeBenchPkgResult struct {
-	Package string   `json:"package"`
-	Output  []string `json:"output"`
-}
 
 func newBenchRuntimeCmd() *cobra.Command {
 	var (
-		cold   bool
-		asJSON bool
+		cold      bool
+		warm      bool
+		asJSON    bool
+		samples   int
+		warmup    int
+		timeOut   int
+		compare   string
 	)
 	cmd := &cobra.Command{
 		Use:   "runtime",
-		Short: "Benchmark runtime hot paths (transform, cache, launch)",
-		Long:  "Run Go benchmarks for internal/runtime and internal/transform packages.",
-		Args:  cobra.NoArgs,
+		Short: "Benchmark runtime hot paths (transform, cache, execution)",
+		Long: `Measure runtime performance with structured, reproducible benchmarks.
+
+Metrics:
+  runtime.startup.latency    Plan construction (ns)
+  runtime.transform.latency  TypeScript transform (ns, cold or warm)
+  runtime.execution.walltime m run process wall-clock (ns, warm)
+
+All state (cache, store, config, temp) is isolated in a bench-owned
+temporary directory. The user's real Mew cache is never touched.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repoRoot, err := findModuleRoot()
+			if !cold && !warm {
+				return apperr.New(apperr.Usage, "bench runtime", "", "specify --cold, --warm, or both")
+			}
+			if samples < 1 {
+				return apperr.New(apperr.Usage, "bench runtime", "", "--samples must be >= 1")
+			}
+			if warmup < 0 {
+				return apperr.New(apperr.Usage, "bench runtime", "", "--warmup must be >= 0")
+			}
+			if timeOut < 1 {
+				return apperr.New(apperr.Usage, "bench runtime", "", "--timeout must be >= 1")
+			}
+
+			result, err := benchruntime.Run(cmd.Context(), benchruntime.Options{
+				Cold:    cold,
+				Warm:    warm,
+				Samples: samples,
+				Warmup:  warmup,
+				Timeout: time.Duration(timeOut) * time.Second,
+				Compare: compare,
+			})
 			if err != nil {
-				return apperr.Wrap(apperr.Internal, "bench runtime", "", err)
-			}
-
-			if cold {
-				if err := clearTransformCache(); err != nil {
-					return err
-				}
-			}
-
-			benchPkgs := []string{
-				"./internal/runtime",
-				"./internal/transform",
-			}
-
-			var results []runtimeBenchPkgResult
-			var allOut strings.Builder
-			for _, pkg := range benchPkgs {
-				out, err := runBenchPkg(cmd.Context(), repoRoot, pkg)
-				if err != nil {
-					return apperr.Wrap(apperr.Internal, "bench runtime", pkg, err)
-				}
-				results = append(results, runtimeBenchPkgResult{
-					Package: pkg,
-					Output:  strings.Split(strings.TrimSpace(string(out)), "\n"),
-				})
-				allOut.Write(out)
-				allOut.WriteByte('\n')
+				return err
 			}
 
 			if asJSON {
-				report := runtimeBenchResult{
-					SchemaVersion: 1,
-					Packages:      []string{"internal/runtime", "internal/transform"},
-					Cold:          cold,
-					Environment: runtimeBenchEnv{
-						OS:          runtime.GOOS,
-						Arch:        runtime.GOARCH,
-						GoVersion:   runtime.Version(),
-						LogicalCPUs: runtime.NumCPU(),
-					},
-					Results: results,
-				}
-				data, err := json.MarshalIndent(report, "", "  ")
+				data, err := benchruntime.EncodeResultJSON(result)
 				if err != nil {
 					return apperr.Wrap(apperr.Internal, "bench runtime", "", err)
 				}
-				return writeStaticOut(cmd, string(data))
+				return writeStaticOut(cmd, string(data)+"\n")
 			}
 
-			return writeStaticOut(cmd, allOut.String())
+			return writeStaticOut(cmd, benchruntime.FormatResultHuman(result))
 		},
 	}
-	cmd.Flags().BoolVar(&cold, "cold", false, "clear transform cache before benchmarking")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON result with measurements")
+
+	cmd.Flags().BoolVar(&cold, "cold", false, "clear bench-owned cache before measuring")
+	cmd.Flags().BoolVar(&warm, "warm", false, "prime bench-owned cache before measuring")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON result on stdout")
+	cmd.Flags().IntVar(&samples, "samples", 5, "measured samples per metric")
+	cmd.Flags().IntVar(&warmup, "warmup", 1, "discarded warmup iterations per metric")
+	cmd.Flags().IntVar(&timeOut, "timeout", 120, "per-iteration timeout in seconds")
+	cmd.Flags().StringVar(&compare, "compare", "", "compare against baseline JSON at path")
+
 	return cmd
-}
-
-// clearTransformCache removes the transform cache directory using the
-// production config CacheRoot to locate the correct path.
-func clearTransformCache() error {
-	cacheRoot := config.CacheRoot(nil)
-	if cacheRoot == "" {
-		return apperr.New(apperr.Internal, "bench runtime", "", "cannot resolve cache root")
-	}
-	transformCache := filepath.Join(cacheRoot, "transform")
-	if err := os.RemoveAll(transformCache); err != nil {
-		return apperr.Wrap(apperr.IO, "bench runtime", transformCache, err)
-	}
-	return nil
-}
-
-func runBenchPkg(ctx context.Context, repoRoot, pkg string) ([]byte, error) {
-	args := []string{"test", pkg, "-bench=.", "-benchmem", "-count=1"}
-	c := exec.CommandContext(ctx, "go", args...)
-	c.Dir = repoRoot
-	c.Env = append(os.Environ(), "CGO_ENABLED=0")
-	var stdout, stderr bytes.Buffer
-	c.Stdout = &stdout
-	c.Stderr = &stderr
-	if err := c.Run(); err != nil {
-		return nil, fmt.Errorf("%v: %s", err, stderr.String())
-	}
-	return stdout.Bytes(), nil
 }
