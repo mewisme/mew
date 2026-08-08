@@ -1,18 +1,32 @@
-// Mew runtime — loader registration preload.
-// Registers the TypeScript loader hook via module.register()
-// before any user code executes.
-
-// Load MEW_TRANSFORM_ENDPOINT and MEW_TRANSFORM_TOKEN from env
-// (set by Go parent). These are consumed by ts-loader.mjs.
-// The loader will strip them before user code sees process.env.
+// Mew runtime — loader registration shim for --node mode.
+// Injected as --import when --node --loader <path> is used.
+// Reads MEW_USER_LOADERS (newline-separated file:// URLs) from the
+// environment, deletes it, and registers each user loader via
+// module.register(). No credential handling, no ts-loader —
+// just the user's loaders on stock Node.
+//
+// Hook chain (LIFO: last-registered fires first):
+//   register loader-2  →  register loader-1
+//   Result: loader-1 fires first, then loader-2, then Node default.
 
 import { register } from 'node:module';
 
-const tsLoader = new URL('./ts-loader.mjs', import.meta.url).href;
+const raw = process.env.MEW_USER_LOADERS || '';
+delete process.env.MEW_USER_LOADERS;
 
-// Register our loader hooks. Node calls these for every module load.
-register(tsLoader, import.meta.url, {
-  parentURL: import.meta.url,
-  data: {},
-  transferList: [],
-});
+if (raw) {
+  const loaders = raw.split('\n').filter((u) => u.length > 0);
+  // Reverse: last-registered = first-called (outermost).
+  for (let i = loaders.length - 1; i >= 0; i--) {
+    try {
+      register(loaders[i], import.meta.url, {
+        parentURL: import.meta.url,
+        data: {},
+        transferList: [],
+      });
+    } catch (_) {
+      // User loader registration failed. Let Node surface the error
+      // if the loader is required for resolution.
+    }
+  }
+}

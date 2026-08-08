@@ -42,8 +42,10 @@ func newConformanceListCmd() *cobra.Command {
 				suites, err = conformance.ListCore(repoRoot, filter)
 			case "cli-ux":
 				suites, err = conformance.ListCLIUX(repoRoot, filter)
+			case "runtime":
+				suites, err = conformance.ListRuntime(repoRoot, filter)
 			default:
-				return apperr.New(apperr.Usage, "conformance list", matrix, "matrix must be core or cli-ux")
+				return apperr.New(apperr.Usage, "conformance list", matrix, "matrix must be core, cli-ux, or runtime")
 			}
 			if err != nil {
 				return apperr.Wrap(apperr.Usage, "conformance list", "", err)
@@ -80,6 +82,11 @@ func newConformanceRunCmd() *cobra.Command {
 		"cli-ux",
 		"Run the CLI UX certification matrix",
 		conformance.RunCLIUX,
+	))
+	cmd.AddCommand(newConformanceRunGoTestMatrixCmd(
+		"runtime",
+		"Run the runtime stabilization certification matrix",
+		conformance.RunRuntime,
 	))
 	cmd.AddCommand(newConformanceRunRunnerCmd())
 	return cmd

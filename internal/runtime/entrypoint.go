@@ -15,14 +15,14 @@ var runtimeExts = map[string]bool{
 	".mjs": true,
 	".cjs": true,
 	".ts":  true,
+	".tsx": true,
 	".mts": true,
 	".cts": true,
 }
 
-// nextPlanExts are extensions deferred to a future plan (0052).
+// nextPlanExts are extensions deferred to a future plan.
 var nextPlanExts = map[string]string{
-	".tsx": "0052",
-	".jsx": "0052",
+	".jsx": "0053",
 }
 
 // IsJSFile reports whether the selector looks like a runtime file (has a supported
@@ -41,7 +41,7 @@ func IsRuntimeFile(selector string) bool {
 	if runtimeExts[ext] {
 		return true
 	}
-	// Deferred extensions (0052) are still runtime files — the dispatcher
+	// Deferred extensions are still runtime files — the dispatcher
 	// gives an actionable plan-deferral message instead of "unknown command".
 	if _, ok := nextPlanExts[ext]; ok {
 		return true
@@ -92,7 +92,7 @@ func ResolveEntrypoint(cwd, selector string) (string, error) {
 	ext := strings.ToLower(filepath.Ext(abs))
 	if !runtimeExts[ext] {
 		return "", apperr.New(apperr.RuntimeEntrypoint, "runtime.entrypoint", abs,
-			fmt.Sprintf("unsupported file extension %q; expected .js, .mjs, .cjs, .ts, .mts, or .cts", ext))
+			fmt.Sprintf("unsupported file extension %q; expected .js, .mjs, .cjs, .ts, .tsx, .mts, or .cts", ext))
 	}
 
 	return abs, nil

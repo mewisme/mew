@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "matrix": "runtime",
+  "suites": [
+    {
+      "id": "runtime-syntax",
+      "title": "Syntax and transform execution (TS, TSX, MTS, CTS, JS, MJS, CJS, imports)",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformance(Hello|Import)",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-resolution",
+      "title": "Module resolution, custom loaders, PnP, tsconfig paths, module format",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformance(Loader|PnP|Tsconfig|MTSModule|CTSModule|DefaultExport)",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-env",
+      "title": "Environment loading, precedence, mode, expansion, kill switch",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformanceEnv",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-workers",
+      "title": "Worker thread isolation, credential boundaries, child processes",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformance(Worker|ChildProcess)",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-storage",
+      "title": "Web Storage API (localStorage, sessionStorage)",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformanceStorage",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-watch",
+      "title": "Watch mode start, restart, bounded shutdown",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformanceWatch",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-diagnostics",
+      "title": "Trace, doctor, cache explain, support bundle, inspector, opt-out, argv",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformance(RuntimeTrace|Doctor|CacheExplain|Support|Inspector|OptOut|AppArgv)",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-cache",
+      "title": "Transform cache round-trip, key stability, schema version, source maps",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformance(Cache(RoundTrip|Key|Schema)|SourceMap)",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-failure",
+      "title": "Failure semantics: syntax errors, missing modules, bad loaders, exit code",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformance(Failure|ExitCode)",
+      "required": true,
+      "platforms": ["linux", "darwin", "windows"]
+    }
+  ]
+}

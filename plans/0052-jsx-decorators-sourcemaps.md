@@ -73,50 +73,50 @@ Every new package must expose narrow interfaces, accept `context.Context` for ca
 
 ### Contracts & types
 
-- [ ] Implement JSX option normalization (classic, automatic, importSource, dev)
-- [ ] Implement inline and external source map generation
-- [ ] Add transform parity report command for debugging
-- [ ] Document exact differences from TypeScript compiler
+- [x] Implement JSX option normalization (classic, automatic, importSource, dev)
+- [x] Implement inline and external source map generation
+- [x] Add transform parity report command for debugging
+- [x] Document exact differences from TypeScript compiler
 
 ### Core logic
 
-- [ ] Support React, Preact, and custom JSX runtimes via tsconfig
-- [ ] Implement source-map chaining across loader stages
-- [ ] Test React/Preact/custom JSX fixture projects
-- [ ] Treat decorator metadata as separately certified capability
+- [x] Support React, Preact, and custom JSX runtimes via tsconfig
+- [x] Implement source-map chaining across loader stages
+- [x] Test React/Preact/custom JSX fixture projects
+- [x] Treat decorator metadata as separately certified capability
 
 ### CLI / UX
 
-- [ ] Implement or integrate standard decorator transforms
-- [ ] Define source content inclusion policy for maps
-- [ ] Test decorator framework fixtures (legacy + standard)
-- [ ] Benchmark JSX/decorator transform hot paths
+- [x] Implement or integrate standard decorator transforms
+- [x] Define source content inclusion policy for maps
+- [x] Test decorator framework fixtures (legacy + standard)
+- [x] Benchmark JSX/decorator transform hot paths
 
 ### Tests & fixtures
 
-- [ ] Implement legacy TypeScript decorator compatibility path
-- [ ] Implement diagnostic code frames pointing to original sources
-- [ ] Verify stack traces through imports and async functions
+- [x] Implement legacy TypeScript decorator compatibility path
+- [x] Implement diagnostic code frames pointing to original sources
+- [x] Verify stack traces through imports and async functions
 
 ### Docs & observability
 
-- [ ] Research and choose decorator metadata emission strategy
-- [ ] Add transform warnings and unsupported-option diagnostics
-- [ ] Include JSX/decorator options in transpile cache keys
+- [x] Research and choose decorator metadata emission strategy
+- [x] Add transform warnings and unsupported-option diagnostics
+- [x] Include JSX/decorator options in transpile cache keys
 
 ## Test Plan
 
 <!-- ENRICHMENT-TESTS -->
-- [ ] Acceptance: m component.tsx runs with correct JSX runtime per tsconfig
-- [ ] Acceptance: Legacy and standard decorators transpile for supported frameworks
-- [ ] Acceptance: Stack traces map to original TSX/TS sources
-- [ ] Acceptance: Transform parity report lists known divergences
-- [ ] Acceptance: Cache keys change when relevant JSX/decorator options change
-- [ ] Fixture ready: `fixtures/transform/jsx-react — automatic runtime`
-- [ ] Fixture ready: `fixtures/transform/jsx-preact — importSource custom`
-- [ ] Fixture ready: `fixtures/transform/decorators-standard — TC39 decorators`
-- [ ] Fixture ready: `fixtures/transform/decorators-legacy — experimental legacy`
-- [ ] Fixture ready: `fixtures/transform/sourcemaps — stack trace mapping`
+- [x] Acceptance: m component.tsx runs with correct JSX runtime per tsconfig
+- [x] Acceptance: Legacy and standard decorators transpile for supported frameworks
+- [x] Acceptance: Stack traces map to original TSX/TS sources
+- [x] Acceptance: Transform parity report lists known divergences
+- [x] Acceptance: Cache keys change when relevant JSX/decorator options change
+- [x] Fixture ready: `fixtures/transform/jsx-react — automatic runtime`
+- [x] Fixture ready: `fixtures/transform/jsx-preact — importSource custom`
+- [x] Fixture ready: `fixtures/transform/decorators-standard — TC39 decorators`
+- [x] Fixture ready: `fixtures/transform/decorators-legacy — experimental legacy`
+- [x] Fixture ready: `fixtures/transform/sourcemaps — stack trace mapping`
 
 
 Required test layers:
@@ -152,17 +152,17 @@ Secrets must never be written to logs, lockfiles, snapshots, telemetry, crash re
 
 ## Deliverables
 
-- [ ] Production implementation and public interfaces.
-- [ ] Unit, integration, conformance, and failure-injection tests.
-- [ ] User documentation and migration notes where behavior is public.
-- [ ] Benchmark baseline and diagnostic instrumentation.
+- [x] Production implementation and public interfaces.
+- [x] Unit, integration, conformance, and failure-injection tests.
+- [x] User documentation and migration notes where behavior is public.
+- [x] Benchmark baseline and diagnostic instrumentation.
 
 ## Exit Criteria
 
-- [ ] All required tests pass on supported operating systems.
-- [ ] No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Public behavior and intentional deviations are documented.
-- [ ] The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] All required tests pass on supported operating systems.
+- [x] No unresolved correctness, integrity, or data-loss issue remains.
+- [x] Public behavior and intentional deviations are documented.
+- [x] The next dependent MVP can consume stable interfaces without reaching into internals.
 
 
 

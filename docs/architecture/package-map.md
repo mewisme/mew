@@ -78,11 +78,11 @@ Do not use "certified" unless a documented certification suite exists and is pas
 | `internal/process/` | Signals, shells, child execution | exists | implemented |
 | `internal/runtime/` | Node launch orchestration | exists | implemented |
 | `internal/runtime/assets/` | Embedded loader/preload JS | exists | implemented |
-| `internal/transform/` | Go transform service + IPC | exists | scaffolded |
+| `internal/transform/` | Go transform service + IPC | exists | partial |
 | `internal/node/` | Node discovery and provisioning | exists | implemented |
 | `internal/pmmanager/` | External PM detect/pin/invoke | exists | implemented |
 | `internal/shim/` | Cross-platform shims | reserved | planned |
-| `runtime/` | Source for go:embed runtime assets | exists | scaffolded |
+| `runtime/` | Source for go:embed runtime assets | exists | partial |
 
 ## Compatibility, security, distribution
 

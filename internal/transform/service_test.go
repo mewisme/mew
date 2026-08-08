@@ -3,12 +3,14 @@ package transform_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,8 +19,9 @@ import (
 
 // fakeEngine blocks Transform until unblocked, for cancellation testing.
 type fakeEngine struct {
-	blockCh  chan struct{} // closed to unblock
-	identity transform.EngineIdentity
+	blockCh   chan struct{} // closed to unblock
+	unblocked sync.Once
+	identity  transform.EngineIdentity
 }
 
 func newFakeEngine() *fakeEngine {
@@ -43,7 +46,7 @@ func (e *fakeEngine) Transform(ctx context.Context, _ transform.TransformRequest
 	}
 }
 
-func (e *fakeEngine) unblock() { close(e.blockCh) }
+func (e *fakeEngine) unblock() { e.unblocked.Do(func() { close(e.blockCh) }) }
 
 // blockingEngine returns a fake engine that blocks on every transform until
 // the returned unblock function is called.
@@ -105,6 +108,99 @@ func TestCloseIdempotent(t *testing.T) {
 
 func TestCloseConcurrent(t *testing.T) {
 	ctx := context.Background()
+	engine, unblock := blockingEngine()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Send a transform that blocks on the engine so Close has work to wait for.
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("x")
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "cc-1", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "cc-tok",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give the transform time to acquire worker and block on engine.
+	time.Sleep(100 * time.Millisecond)
+
+	// Now close concurrently. The transform must be running when Close is called.
+	started := make(chan struct{})
+	var wg sync.WaitGroup
+	errs := make([]error, 5)
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			if idx == 0 {
+				close(started) // signal one goroutine has entered
+			}
+			errs[idx] = sess.Close()
+		}(i)
+	}
+	// Wait for at least one goroutine to enter Close, then wait briefly
+	// for others to also enter (and block on closeDone).
+	<-started
+	time.Sleep(100 * time.Millisecond)
+
+	// All goroutines should still be waiting for the transform to finish.
+	// Unblock the engine so shutdown can complete.
+	unblock()
+
+	// All must return promptly.
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("concurrent Close callers did not return within 5s")
+	}
+
+	for i, e := range errs {
+		if e != nil {
+			t.Errorf("Close[%d]: %v", i, e)
+		}
+	}
+}
+
+func TestCloseConcurrentWaitersReturnSameError(t *testing.T) {
+	ctx := context.Background()
 	sess, err := transform.NewSession(transform.ServiceOptions{
 		Context: ctx,
 	})
@@ -112,9 +208,10 @@ func TestCloseConcurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Collect results from 5 concurrent Close calls.
 	var wg sync.WaitGroup
-	errs := make([]error, 10)
-	for i := 0; i < 10; i++ {
+	errs := make([]error, 5)
+	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -123,10 +220,10 @@ func TestCloseConcurrent(t *testing.T) {
 	}
 	wg.Wait()
 
-	// All must return nil (idempotent after first succeeds).
+	// All must return the same value.
 	for i, e := range errs {
-		if e != nil {
-			t.Errorf("concurrent Close[%d] returned error: %v", i, e)
+		if e != errs[0] {
+			t.Errorf("Close[%d] returned %v, want %v", i, e, errs[0])
 		}
 	}
 }
@@ -173,7 +270,9 @@ func TestCloseWaitsForGoroutines(t *testing.T) {
 	req := transform.TransformRequestV2{
 		V: transform.ProtocolVersion, ID: "1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
-		Loader: "ts", Format: "esm", NodeMajor: 20,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
 		CancelToken: "tok-1",
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
@@ -315,7 +414,9 @@ func TestActiveCancelsCleanedAfterCompletion(t *testing.T) {
 	req := transform.TransformRequestV2{
 		V: transform.ProtocolVersion, ID: "cleanup-1", Op: "transform",
 		Path: "a.ts", Source: "const x = 1;", SourceDigest: srcDigest,
-		Loader: "ts", Format: "esm", NodeMajor: 20,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
 		CancelToken: "tok-cleanup",
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
@@ -332,9 +433,8 @@ func TestActiveCancelsCleanedAfterCompletion(t *testing.T) {
 	}
 
 	// Send a cancel for the same token — should be idempotent (no crash, no panic).
-	cancelReq := transform.TransformRequestV2{
-		V: transform.ProtocolVersion, ID: "cancel-1", Op: "cancel",
-		CancelToken: "tok-cleanup",
+	cancelReq := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "cancel-1", Op: "cancel", CancelToken: "tok-cleanup",
 	}
 	if err := transform.EncodeFrame(conn, cancelReq); err != nil {
 		t.Fatal(err)
@@ -435,7 +535,9 @@ func TestBlockedWorkerExitsOnCancellation(t *testing.T) {
 	req1 := transform.TransformRequestV2{
 		V: transform.ProtocolVersion, ID: "blk-1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
-		Loader: "ts", Format: "esm", NodeMajor: 20,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
 		CancelToken: "blk-tok-1",
 	}
 	if err := transform.EncodeFrame(conn, req1); err != nil {
@@ -468,7 +570,9 @@ func TestBlockedWorkerExitsOnCancellation(t *testing.T) {
 	req2 := transform.TransformRequestV2{
 		V: transform.ProtocolVersion, ID: "blk-2", Op: "transform",
 		Path: "b.ts", Source: "x", SourceDigest: srcDigest,
-		Loader: "ts", Format: "esm", NodeMajor: 20,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
 		CancelToken: "blk-tok-2",
 	}
 
@@ -578,7 +682,9 @@ func TestInvocationContextCancelsActiveTransforms(t *testing.T) {
 	req := transform.TransformRequestV2{
 		V: transform.ProtocolVersion, ID: "ctx-cancel-1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
-		Loader: "ts", Format: "esm", NodeMajor: 20,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
 		CancelToken: "ctx-tok",
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
@@ -652,7 +758,9 @@ func TestSessionCloseReleasesActiveCancels(t *testing.T) {
 	req := transform.TransformRequestV2{
 		V: transform.ProtocolVersion, ID: "close-cleanup", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
-		Loader: "ts", Format: "esm", NodeMajor: 20,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
 		CancelToken: "close-tok",
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
@@ -773,7 +881,10 @@ func TestDuplicateRequestIDRejected(t *testing.T) {
 	req := transform.TransformRequestV2{
 		V: transform.ProtocolVersion, ID: "dup-id", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
-		Loader: "ts", Format: "esm", NodeMajor: 20,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "dup-id",
 	}
 
 	// Connection 1: send request that blocks on engine.
@@ -850,8 +961,8 @@ func TestCancelTokenValidation(t *testing.T) {
 	}
 
 	// Missing cancel token.
-	req := transform.TransformRequestV2{
-		V: transform.ProtocolVersion, ID: "ct-1", Op: "cancel",
+	req := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "ct-1", Op: "cancel", CancelToken: "",
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
 		t.Fatal(err)
@@ -899,9 +1010,8 @@ func TestIdempotentCancel(t *testing.T) {
 	}
 
 	// Cancel a non-existent request — should succeed (idempotent).
-	req := transform.TransformRequestV2{
-		V: transform.ProtocolVersion, ID: "ic-1", Op: "cancel",
-		CancelToken: "nonexistent",
+	req := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "ic-1", Op: "cancel", CancelToken: "nonexistent",
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
 		t.Fatal(err)
@@ -949,7 +1059,7 @@ func TestShutdownRequest(t *testing.T) {
 	}
 
 	// Send shutdown.
-	req := transform.TransformRequestV2{
+	req := transform.ShutdownRequest{
 		V: transform.ProtocolVersion, ID: "sd-1", Op: "shutdown",
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
@@ -1187,7 +1297,10 @@ func TestTransformSuccessButCacheWriteFailure(t *testing.T) {
 	req := transform.TransformRequestV2{
 		V: transform.ProtocolVersion, ID: "cache-fail", Op: "transform",
 		Path: "test.ts", Source: src, SourceDigest: transform.DigestString(src),
-		Loader: "ts", Format: "esm", NodeMajor: 20,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "cache-fail",
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
 		t.Fatal(err)
@@ -1266,7 +1379,9 @@ func TestCacheErrorDiagnosticsDoNotExposeCredentials(t *testing.T) {
 		V: transform.ProtocolVersion, ID: "no-leak", Op: "transform",
 		Path: "test.ts", Source: src, SourceDigest: transform.DigestString(src),
 		Loader: "ts", Format: "esm", NodeMajor: 20,
-		Options: `{"target":"ES2022"}`, OptsDigest: transform.DigestString(`{"target":"ES2022"}`),
+		SourceMap:   "none",
+		CancelToken: "no-leak",
+		Options:     `{"target":"ES2022"}`, OptsDigest: transform.DigestString(`{"target":"ES2022"}`),
 	}
 	if err := transform.EncodeFrame(conn, req); err != nil {
 		t.Fatal(err)
@@ -1300,3 +1415,1275 @@ func TestCacheErrorDiagnosticsDoNotExposeCredentials(t *testing.T) {
 
 // verifyErrorCode helper — unused, kept for documentation of the pattern
 // that callers should use to check error codes.
+
+// ── In-flight cancellation tests (Issue 4) ─────────────────────────────
+
+// blockingEngineUnblocked creates a fake engine that blocks until context
+// cancellation (unlike blockingEngine which returns success on unblock).
+// Returns the engine and a channel that signals when Transform was called.
+func engineThatBlocksUntilCancelled() (transform.Engine, chan struct{}) {
+	called := make(chan struct{}, 4)
+	e := &cancellationOnlyEngine{called: called}
+	return e, called
+}
+
+type cancellationOnlyEngine struct {
+	called   chan struct{}
+	identity transform.EngineIdentity
+}
+
+func (e *cancellationOnlyEngine) Identity() transform.EngineIdentity {
+	if e.identity.Name == "" {
+		e.identity = transform.EngineIdentity{Name: "cancel-only", Version: "1.0"}
+	}
+	return e.identity
+}
+
+func (e *cancellationOnlyEngine) Transform(ctx context.Context, _ transform.TransformRequest) (transform.TransformResult, error) {
+	select {
+	case e.called <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return transform.TransformResult{}, ctx.Err()
+}
+
+// TestOpCancelProcessedWhileTransformInFlight proves the core fix:
+// an OpCancel frame on the same connection is read and processed while
+// the transform is still running (not after it completes).
+func TestOpCancelProcessedWhileTransformInFlight(t *testing.T) {
+	ctx := context.Background()
+	engine, engineCalled := engineThatBlocksUntilCancelled()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Authenticate.
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("const x: number = 1;")
+
+	// Send transform that blocks until context cancellation.
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "in-flight-1", Op: "transform",
+		Path: "a.ts", Source: "const x: number = 1;", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-inflight",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for engine to be called (transform is in flight).
+	select {
+	case <-engineCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("engine was never called")
+	}
+
+	// Now send OpCancel on the same connection.
+	cancelReq := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "cancel-inflight", Op: "cancel", CancelToken: "tok-inflight",
+	}
+	if err := transform.EncodeFrame(conn, cancelReq); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read cancel acknowledgment.
+	var cancelAck transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &cancelAck); err != nil {
+		t.Fatalf("decode cancel ack: %v", err)
+	}
+	if !cancelAck.OK {
+		t.Fatalf("cancel rejected: %s", cancelAck.Error)
+	}
+
+	// Read the transform response — must be cancellation, not success.
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var resp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &resp); err != nil {
+		t.Fatalf("decode transform response: %v", err)
+	}
+	if resp.OK {
+		t.Fatal("transform succeeded after cancellation — expected cancellation response")
+	}
+	if resp.ErrCode != "ERR_M_TRANSFORM_CANCELLED" {
+		t.Errorf("expected ERR_M_TRANSFORM_CANCELLED, got %q", resp.ErrCode)
+	}
+}
+
+// TestCancelProducesSingleTerminalResponse proves exactly one response is
+// sent for a cancelled request — no success response follows.
+func TestCancelProducesSingleTerminalResponse(t *testing.T) {
+	ctx := context.Background()
+	engine, engineCalled := engineThatBlocksUntilCancelled()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("x")
+
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "single-1", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-single",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-engineCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("engine was never called")
+	}
+
+	// Send cancel.
+	cancelReq := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "cancel-single", Op: "cancel", CancelToken: "tok-single",
+	}
+	if err := transform.EncodeFrame(conn, cancelReq); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read cancel ack + transform response.
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+
+	responseCount := 0
+	for i := 0; i < 3; i++ {
+		var resp transform.TransformResponseV2
+		if err := transform.DecodeFrame(conn, &resp); err != nil {
+			break
+		}
+		if resp.ID == "single-1" {
+			responseCount++
+		}
+	}
+
+	if responseCount != 1 {
+		t.Errorf("expected exactly 1 response for transform, got %d", responseCount)
+	}
+}
+
+// TestCancelOneDoesNotAffectOther proves cancelling one request leaves
+// another independent request unaffected.
+func TestCancelOneDoesNotAffectOther(t *testing.T) {
+	ctx := context.Background()
+	// Use selective engine: only blocks request with cancel token "tok-conc-1".
+	engine, engineCalled := engineThatBlocksForToken("tok-conc-1")
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("const x: number = 1;")
+
+	// Request 1: will be cancelled (blocks on engine).
+	req1 := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "conc-1", Op: "transform",
+		Path: "a.ts", Source: "const x: number = 1;", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-conc-1",
+	}
+	if err := transform.EncodeFrame(conn, req1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for req1 to enter the engine.
+	select {
+	case <-engineCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("engine not called for first request")
+	}
+
+	// Request 2: completes normally via real esbuild.
+	req2 := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "conc-2", Op: "transform",
+		Path: "b.ts", Source: "const x: number = 1;", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-conc-2",
+	}
+	if err := transform.EncodeFrame(conn, req2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cancel request 1.
+	cancelReq := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "cancel-conc", Op: "cancel", CancelToken: "tok-conc-1",
+	}
+	if err := transform.EncodeFrame(conn, cancelReq); err != nil {
+		t.Fatal(err)
+	}
+
+	// Collect responses.
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	var resp1, resp2 *transform.TransformResponseV2
+	for i := 0; i < 4; i++ {
+		var r transform.TransformResponseV2
+		if err := transform.DecodeFrame(conn, &r); err != nil {
+			break
+		}
+		switch r.ID {
+		case "conc-1":
+			resp1 = &r
+		case "conc-2":
+			resp2 = &r
+		}
+	}
+
+	if resp1 == nil {
+		t.Fatal("no response for request 1")
+	}
+	if resp1.OK {
+		t.Fatal("request 1 should be cancelled, got success")
+	}
+
+	if resp2 == nil {
+		t.Fatal("no response for request 2")
+	}
+	if !resp2.OK {
+		t.Errorf("request 2 should succeed, got err_code=%q", resp2.ErrCode)
+	}
+}
+
+// engineThatBlocksForToken creates an engine that blocks until context
+// cancellation only for transforms whose request carries the given cancel token.
+// All other transforms use the real esbuild engine.
+func engineThatBlocksForToken(token string) (transform.Engine, chan struct{}) {
+	called := make(chan struct{}, 1)
+	return &selectiveBlockEngine{blockToken: token, called: called}, called
+}
+
+type selectiveBlockEngine struct {
+	blockToken string
+	called     chan struct{}
+	real       transform.Engine
+	identity   transform.EngineIdentity
+}
+
+func (e *selectiveBlockEngine) Identity() transform.EngineIdentity {
+	if e.identity.Name == "" {
+		e.identity = transform.EngineIdentity{Name: "selective", Version: "1.0"}
+	}
+	return e.identity
+}
+
+func (e *selectiveBlockEngine) Transform(ctx context.Context, req transform.TransformRequest) (transform.TransformResult, error) {
+	// The engine matches by request ID. The test uses "conc-1" as the
+	// request ID that should block until cancelled.
+	if req.RequestID == "conc-1" {
+		select {
+		case e.called <- struct{}{}:
+		default:
+		}
+		<-ctx.Done()
+		return transform.TransformResult{}, ctx.Err()
+	}
+	if e.real == nil {
+		e.real = transform.NewEsbuildEngine()
+	}
+	return e.real.Transform(ctx, req)
+}
+
+// TestDuplicateCancelIdempotent proves multiple OpCancel frames for the same
+// token are all acknowledged OK.
+func TestDuplicateCancelIdempotent(t *testing.T) {
+	ctx := context.Background()
+	engine, engineCalled := engineThatBlocksUntilCancelled()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("x")
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "dup-cancel-1", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-dup-cancel",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-engineCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("engine not called")
+	}
+
+	// First cancel.
+	c1 := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "cancel-dup-1", Op: "cancel", CancelToken: "tok-dup-cancel",
+	}
+	if err := transform.EncodeFrame(conn, c1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second cancel — same token, should still be OK.
+	c2 := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "cancel-dup-2", Op: "cancel", CancelToken: "tok-dup-cancel",
+	}
+	if err := transform.EncodeFrame(conn, c2); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	for i := 0; i < 3; i++ {
+		var r transform.TransformResponseV2
+		if err := transform.DecodeFrame(conn, &r); err != nil {
+			break
+		}
+		// Cancel acknowledgments should be OK.
+		if (r.ID == "cancel-dup-1" || r.ID == "cancel-dup-2") && !r.OK {
+			t.Errorf("duplicate cancel %s not OK: %s", r.ID, r.Error)
+		}
+	}
+}
+
+// TestUnknownCancelToken proves cancelling a non-existent token is idempotent.
+func TestUnknownCancelTokenIdempotent(t *testing.T) {
+	ctx := context.Background()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	// Cancel a never-registered token.
+	req := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "unknown-tok", Op: "cancel", CancelToken: "never-existed",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	var resp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.OK {
+		t.Fatalf("unknown token cancel not OK: %s", resp.Error)
+	}
+}
+
+// TestCancelAlreadyCompletedToken proves cancelling a completed transform's
+// token is safe (idempotent no-op).
+func TestCancelAlreadyCompletedToken(t *testing.T) {
+	ctx := context.Background()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("const x: number = 1;")
+
+	// Send a fast transform that completes immediately.
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "fast-1", Op: "transform",
+		Path: "a.ts", Source: "const x: number = 1;", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-fast",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read success response.
+	var successResp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &successResp); err != nil {
+		t.Fatal(err)
+	}
+	if !successResp.OK {
+		t.Fatalf("transform failed: %s", successResp.Error)
+	}
+
+	// Now cancel the already-completed token.
+	cancelReq := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "cancel-fast", Op: "cancel", CancelToken: "tok-fast",
+	}
+	if err := transform.EncodeFrame(conn, cancelReq); err != nil {
+		t.Fatal(err)
+	}
+
+	var cancelResp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &cancelResp); err != nil {
+		t.Fatal(err)
+	}
+	if !cancelResp.OK {
+		t.Fatalf("post-completion cancel not OK: %s", cancelResp.Error)
+	}
+}
+
+// TestCancelWhileWaitingForWorkerSlot proves cancellation works even when
+// the request hasn't yet acquired a worker (it's queued).
+func TestCancelWhileWaitingForWorkerSlot(t *testing.T) {
+	ctx := context.Background()
+	engine, unblock := blockingEngine()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unblock()
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	// Use a single connection so cancel can arrive while second request is queued.
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("x")
+
+	// First request: blocks the only worker slot.
+	req1 := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "slot-1", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-slot-1",
+	}
+	if err := transform.EncodeFrame(conn, req1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give it time to acquire the worker.
+	time.Sleep(100 * time.Millisecond)
+
+	// Second request: will block waiting for worker slot.
+	req2 := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "slot-2", Op: "transform",
+		Path: "b.ts", Source: "x", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-slot-2",
+	}
+	if err := transform.EncodeFrame(conn, req2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Give it time to start waiting.
+	time.Sleep(50 * time.Millisecond)
+
+	// Cancel the second request while it's waiting for a worker slot.
+	cancelReq := transform.CancelRequest{
+		V: transform.ProtocolVersion, ID: "cancel-slot", Op: "cancel", CancelToken: "tok-slot-2",
+	}
+	if err := transform.EncodeFrame(conn, cancelReq); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read responses: cancel ack + cancelled transform response.
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+
+	var gotCancelAck, gotCancelledResp bool
+	for i := 0; i < 3; i++ {
+		var r transform.TransformResponseV2
+		if err := transform.DecodeFrame(conn, &r); err != nil {
+			break
+		}
+		if r.ID == "cancel-slot" && r.OK {
+			gotCancelAck = true
+		}
+		if r.ID == "slot-2" {
+			gotCancelledResp = true
+			if r.OK {
+				t.Errorf("request 2 succeeded while waiting for slot, expected cancellation")
+			}
+		}
+	}
+
+	if !gotCancelAck {
+		t.Error("no cancel acknowledgment received")
+	}
+	if !gotCancelledResp {
+		t.Error("no cancellation response for request 2")
+	}
+}
+
+// TestResponseWriteFailureCleanup proves that when a connection dies mid-transform,
+// state is cleaned up without blocking.
+func TestResponseWriteFailureCleanup(t *testing.T) {
+	ctx := context.Background()
+	engine, unblock := blockingEngine()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("x")
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "conn-fail", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-conn-fail",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	// Let the transform acquire the worker and block.
+	time.Sleep(100 * time.Millisecond)
+
+	// Kill the connection before the transform completes.
+	_ = conn.Close()
+
+	// Unblock the engine so the transform goroutine wakes up and tries to write.
+	unblock()
+
+	// Session Close should return promptly (write fails, cleanup runs).
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- sess.Close()
+	}()
+
+	select {
+	case <-closeDone:
+		// OK: Close returned promptly.
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close hung after connection failure")
+	}
+}
+
+// TestShutdownCancelsMultipleActiveTransforms proves session Close cancels
+// all active transforms and waits for their goroutines.
+func TestShutdownCancelsMultipleActiveTransforms(t *testing.T) {
+	ctx := context.Background()
+	engine, engineCalled := engineThatBlocksUntilCancelled()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("x")
+
+	// Send two transforms, both block until cancelled.
+	for i := 0; i < 2; i++ {
+		req := transform.TransformRequestV2{
+			V:  transform.ProtocolVersion,
+			ID: fmt.Sprintf("shutdown-%d", i), Op: "transform",
+			Path: "a.ts", Source: "x", SourceDigest: srcDigest,
+			OptsDigest: transform.DigestString(""),
+			Loader:     "ts", Format: "esm", NodeMajor: 20,
+			SourceMap:   "none",
+			CancelToken: fmt.Sprintf("tok-shutdown-%d", i),
+		}
+		if err := transform.EncodeFrame(conn, req); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Wait for both to enter the engine.
+	for i := 0; i < 2; i++ {
+		select {
+		case <-engineCalled:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("engine not called for request %d", i)
+		}
+	}
+
+	// Close the session — should cancel both.
+	closeDone := make(chan error, 1)
+	go func() {
+		closeDone <- sess.Close()
+	}()
+
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Logf("Close returned: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close hung with multiple active transforms")
+	}
+
+	// Verify no goroutines leaked: Close's wg.Wait returned.
+}
+
+// TestDuplicateActiveRequestIDRejectedOnSameConnection verifies that sending
+// a second request with the same ID before the first completes is rejected.
+func TestDuplicateActiveRequestIDRejected(t *testing.T) {
+	ctx := context.Background()
+	engine, engineCalled := engineThatBlocksUntilCancelled()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: ctx,
+		Engine:  engine,
+		Workers: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("x")
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "dup-on-same", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-dup-id",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for first to enter engine.
+	select {
+	case <-engineCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("engine not called for first request")
+	}
+
+	// Send duplicate ID — must be rejected inline (before any goroutine dispatch).
+	dupReq := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "dup-on-same", Op: "transform",
+		Path: "b.ts", Source: "x", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-dup-id-2",
+	}
+	if err := transform.EncodeFrame(conn, dupReq); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	var rejectResp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &rejectResp); err != nil {
+		t.Fatalf("decode rejection: %v", err)
+	}
+	if rejectResp.ErrCode != "ERR_M_USAGE" || rejectResp.Error != "duplicate request id" {
+		t.Errorf("expected duplicate rejection, got err_code=%q error=%q",
+			rejectResp.ErrCode, rejectResp.Error)
+	}
+}
+
+// TestRequestTimeoutSendsCancellation proves the per-request timeout triggers
+// a cancellation response (not a success).
+func TestRequestTimeoutSendsCancellation(t *testing.T) {
+	ctx := context.Background()
+	engine, engineCalled := engineThatBlocksUntilCancelled()
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context:        ctx,
+		Engine:         engine,
+		Workers:        1,
+		RequestTimeout: 200 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	srcDigest := transform.DigestString("const x: number = 1;")
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "timeout-1", Op: "transform",
+		Path: "a.ts", Source: "const x: number = 1;", SourceDigest: srcDigest,
+		OptsDigest: transform.DigestString(""),
+		Loader:     "ts", Format: "esm", NodeMajor: 20,
+		SourceMap:   "none",
+		CancelToken: "tok-timeout",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for engine to be called.
+	select {
+	case <-engineCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("engine not called")
+	}
+
+	// Wait for timeout response.
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	var resp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &resp); err != nil {
+		t.Fatalf("decode timeout response: %v", err)
+	}
+	if resp.OK {
+		t.Fatal("expected timeout error, got success")
+	}
+	if resp.ErrCode != "ERR_M_TRANSFORM_TIMEOUT" {
+		t.Errorf("expected ERR_M_TRANSFORM_TIMEOUT, got %q", resp.ErrCode)
+	}
+}
+
+// ── Strict validation service-level tests ───────────────────────────
+
+// recordingEngine records whether Transform was ever called.
+type recordingEngine struct {
+	called atomic.Bool
+	transform.EngineIdentity
+}
+
+func (e *recordingEngine) Identity() transform.EngineIdentity { return e.EngineIdentity }
+
+func (e *recordingEngine) Transform(_ context.Context, _ transform.TransformRequest) (transform.TransformResult, error) {
+	e.called.Store(true)
+	return transform.TransformResult{
+		Code: []byte("ok"), OutputDigest: "abc", CacheStatus: transform.CacheStatusMiss,
+	}, nil
+}
+
+func (e *recordingEngine) wasCalled() bool { return e.called.Load() }
+
+func TestInvalidRequestNeverReachesEngine(t *testing.T) {
+	// Proves that requests with bad digests are rejected synchronously in the
+	// read loop and never acquire a worker slot or reach the engine.
+	eng := &recordingEngine{EngineIdentity: transform.EngineIdentity{Name: "record", Version: "1"}}
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: context.Background(),
+		Engine:  eng,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Auth.
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	src := "const x: number = 1;"
+
+	// Send transform with mismatched source digest — structurally valid,
+	// but digest verification must reject it before engine work.
+	badDigest := transform.DigestString("wrong content")
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "bad-digest", Op: "transform",
+		Path: "a.ts", Source: src, SourceDigest: badDigest,
+		Loader: "ts", Format: "esm", OptsDigest: transform.DigestString(""),
+		NodeMajor: 20, SourceMap: "none", CancelToken: "bad-digest",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	var resp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.OK {
+		t.Fatal("expected digest mismatch error, got success")
+	}
+
+	// Engine must never have been called.
+	if eng.wasCalled() {
+		t.Fatal("engine was called for a request with bad source digest")
+	}
+}
+
+func TestInvalidRequestNeverReachesEngine_BadOptsDigest(t *testing.T) {
+	eng := &recordingEngine{EngineIdentity: transform.EngineIdentity{Name: "record", Version: "1"}}
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: context.Background(),
+		Engine:  eng,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	src := "const x: number = 1;"
+	srcDigest := transform.DigestString(src)
+	badOptsDigest := transform.DigestString("wrong options")
+
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "bad-opts", Op: "transform",
+		Path: "a.ts", Source: src, SourceDigest: srcDigest,
+		Loader: "ts", Format: "esm", Options: `{"target":"ES2022"}`,
+		OptsDigest: badOptsDigest,
+		NodeMajor:  20, SourceMap: "none", CancelToken: "bad-opts",
+	}
+	if err := transform.EncodeFrame(conn, req); err != nil {
+		t.Fatal(err)
+	}
+
+	var resp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.OK {
+		t.Fatal("expected opts digest mismatch error, got success")
+	}
+	if eng.wasCalled() {
+		t.Fatal("engine was called for a request with bad options digest")
+	}
+}
+
+func TestRejectTransformFieldsOnCancel(t *testing.T) {
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: context.Background(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	// Send a cancel with transform-specific fields — strict decoding must reject.
+	body := []byte(`{"v":2,"id":"c1","op":"cancel","cancel_token":"tok","path":"/evil.ts","source":"malicious"}`)
+	hdr := [4]byte{}
+	hdr[0] = byte(len(body))
+	_, _ = conn.Write(hdr[:])
+	_, _ = conn.Write(body)
+
+	var resp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.OK {
+		t.Fatal("expected rejection of cancel with transform fields")
+	}
+}
+
+func TestRejectTransformFieldsOnShutdown(t *testing.T) {
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: context.Background(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	// Shutdown with transform-specific fields — must be rejected.
+	body := []byte(`{"v":2,"id":"s1","op":"shutdown","loader":"ts"}`)
+	hdr := [4]byte{}
+	hdr[0] = byte(len(body))
+	_, _ = conn.Write(hdr[:])
+	_, _ = conn.Write(body)
+
+	var resp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.OK {
+		t.Fatal("expected rejection of shutdown with transform fields")
+	}
+}
+
+func TestRejectUnknownOp(t *testing.T) {
+	sess, err := transform.NewSession(transform.ServiceOptions{
+		Context: context.Background(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sess.Close() }()
+
+	if err := sess.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := net.Dial("tcp", sess.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	authReq := transform.HelloRequest{V: transform.ProtocolVersion, Token: sess.Token}
+	if err := transform.EncodeFrame(conn, authReq); err != nil {
+		t.Fatal(err)
+	}
+	var authResp transform.HelloResponse
+	if err := transform.DecodeFrame(conn, &authResp); err != nil {
+		t.Fatal(err)
+	}
+	if !authResp.OK {
+		t.Fatalf("auth failed: %s", authResp.Reason)
+	}
+
+	// Unknown operation.
+	body := []byte(`{"v":2,"id":"u1","op":"bundle"}`)
+	hdr := [4]byte{}
+	hdr[0] = byte(len(body))
+	_, _ = conn.Write(hdr[:])
+	_, _ = conn.Write(body)
+
+	var resp transform.TransformResponseV2
+	if err := transform.DecodeFrame(conn, &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.OK {
+		t.Fatal("expected rejection of unknown op")
+	}
+	if resp.ErrCode != "ERR_M_UNSUPPORTED" {
+		t.Errorf("expected ERR_M_UNSUPPORTED, got %q", resp.ErrCode)
+	}
+}

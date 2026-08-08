@@ -26,7 +26,7 @@ var PreloadMJS []byte
 //go:embed manifest.json
 var manifestRaw []byte
 
-//go:embed preload.cjs preload.mjs loader-register.mjs ts-loader.mjs credential-grabber.cjs manifest.json
+//go:embed preload.cjs preload.mjs loader-register.mjs ts-loader.mjs credential-grabber.cjs web-storage.cjs manifest.json resolve-utils.mjs resolve-diagnostic.mjs
 var runtimeFS embed.FS
 
 // AssetRole classifies how an asset is injected into Node.

@@ -21,6 +21,7 @@ func newCacheCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newCacheDirCmd())
 	cmd.AddCommand(newCacheVerifyCmd())
+	cmd.AddCommand(newCacheExplainCmd())
 	meta := &cobra.Command{Use: "metadata", Short: "Registry metadata cache"}
 	meta.AddCommand(newCacheMetadataInspectCmd())
 	cmd.AddCommand(meta)

@@ -8,8 +8,8 @@ transform service) runtime foundation.
 | Field | Value |
 |---|---|
 | Date | 2026-08-06 |
-| Branch | `worktree-order-implement` |
-| Certified commit SHA | `6831061ab58f7d387c71d0fd9619489e6eff17f7` |
+| Branch | `worktree-order-implement` (historical; commit no longer reachable from any branch) |
+| Certified commit SHA | `6831061ab58f7d387c71d0fd9619489e6eff17f7` (⚠️ no longer present in repository) |
 | Go version | 1.26.5 |
 | esbuild version | 0.28.1 |
 | Status | **GREEN** |

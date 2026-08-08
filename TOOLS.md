@@ -15,8 +15,10 @@ Map common intents to canonical commands. Use these; do not compose ad hoc seque
 | Format check | `make fmt-check` | Makefile |
 | Unit tests | `make test-short` | [test](#test-makefile-target) |
 | Integration tests | `make test-integration` | Makefile |
+| Crash tests | `make test-crash` | [test-crash](#test-crash-makefile-target) |
 | Runtime tests | `make test-runtime` | Makefile |
 | Race tests | `make test-race` | [race](#race-makefile-target) |
+| Adaptive parallel tests | `go run ./tools/testexec` | [testexec](#tools-testexec) |
 | Lint | `make lint` | [lint](#lint-makefile-target) |
 | Quality (all gates) | `make quality` | Makefile |
 | Normal local CI | `make ci` | Makefile |
@@ -79,8 +81,10 @@ All executable or tool-like sources in this repository, including: Go `package m
 
 ### Test tools
 - [`test` (Makefile target)](#test-makefile-target)
+- [`tools/testexec`](#tools-testexec) — canonical adaptive Go test orchestrator
 - [Go benchmark driver (CI-embedded)](#go-benchmark-driver-ci-embedded)
 - [`race` (Makefile target)](#race-makefile-target)
+- [`test-crash` (Makefile target)](#test-crash-makefile-target)
 - [`fuzz-smoke` (Makefile target / `fuzz_smoke.py`)](#fuzz_smoke-py)
 - [`vuln` / govulncheck (Makefile target)](#vuln-govulncheck-makefile-target)
 
@@ -200,16 +204,39 @@ All executable or tool-like sources in this repository, including: Go `package m
 
 ### Test tools
 
+#### `tools/testexec`
+- **Path**: `tools/testexec/main.go` (+ `config.go`, `discover.go`, `schedule.go`, `run.go`)
+- **Type**: Go (`package main`)
+- **Category**: test / orchestration
+- **Platforms**: any with Go
+- **Purpose**: Canonical adaptive Go test orchestrator. Discovers tests, assigns them to workers (round-robin or LPT with optional timing data), and runs workers as parallel processes. Heavy packages use `go test -c` + `-test.run` for process-level sharding with isolated environments. Light packages use standard `go test -p N` for package-level parallelism.
+- **Invocation**: `go run ./tools/testexec [flags] [packages...]`
+- **Flags**: `-workers` (auto|1|N), `-short`, `-race`, `-tags`, `-run`, `-timeout`, `-v`, `-json`, `-cpu`
+- **Dependencies**: stdlib only; shells out to `go test`, `go list`, `go test -c`.
+- **Used by**: Makefile `test`, `test-short`, `test-unit`, `test-integration`, `test-e2e`, `test-crash`, `test-race`, `test-all` targets.
+- **Status**: active (canonical test orchestrator).
+
 #### `test` (Makefile target)
-- **Path**: `Makefile` (line 9)
+- **Path**: `Makefile`
 - **Type**: Makefile target
 - **Category**: test
 - **Platforms**: Unix (Linux, macOS), Windows
-- **Purpose**: Full hermetic unit test suite.
-- **Invocation**: `make test`
-- **Command**: `go test ./... -count=1`
+- **Purpose**: Full hermetic test suite with adaptive parallel execution.
+- **Invocation**: `make test [TESTEXEC_WORKERS=auto|1|N]`
+- **Command**: `go run ./tools/testexec -workers $(TESTEXEC_WORKERS) -timeout 25m`
 - **Dependencies**: Go 1.26.5+.
-- **Used by**: developer manual; CI `test` job uses `go test ./... -short -count=1 -timeout 25m` instead (skips soak/wall-clock suites).
+- **Used by**: developer manual; CI `test` job uses direct `go test ./... -short` for PR gate.
+- **Status**: active.
+
+#### `test-crash` (Makefile target)
+- **Path**: `Makefile`
+- **Type**: Makefile target
+- **Category**: test
+- **Platforms**: Unix (Linux, macOS), Windows
+- **Purpose**: Run crash recovery suite (`crash` build tag).
+- **Invocation**: `make test-crash`
+- **Command**: `go run ./tools/testexec -workers auto -tags crash -timeout 30m ./tests/integration/...`
+- **Used by**: developer manual; CI `crash-integration` job in full.yml.
 - **Status**: active.
 
 #### Go benchmark driver (CI-embedded)

@@ -78,50 +78,50 @@ Every new package must expose narrow interfaces, accept `context.Context` for ca
 
 ### Contracts & types
 
-- [ ] Route --inspect and --inspect-brk flags to stock Node unchanged
-- [ ] Implement module and transform timing diagnostic views
-- [ ] Add inspector startup and break-on-start tests
-- [ ] Publish safe defaults for CI (no inspect bind to 0.0.0.0)
+- [x] Route --inspect and --inspect-brk flags to stock Node unchanged
+- [x] Implement module and transform timing diagnostic views
+- [x] Add inspector startup and break-on-start tests
+- [x] Publish safe defaults for CI (no inspect bind to 0.0.0.0)
 
 ### Core logic
 
-- [ ] Handle inspector port allocation and collision diagnostics
-- [ ] Implement cache explain command for transpile cache
-- [ ] Test mapped breakpoints and stack traces in TS/TSX
-- [ ] Freeze trace schema before 0057 stabilization
+- [x] Handle inspector port allocation and collision diagnostics
+- [x] Implement cache explain command for transpile cache
+- [x] Test mapped breakpoints and stack traces in TS/TSX
+- [x] Freeze trace schema before 0057 stabilization
 
 ### CLI / UX
 
-- [ ] Integrate source-map support across transforms and loaders
-- [ ] Implement support bundle collection with redaction policy
-- [ ] Benchmark trace overhead when diagnostics enabled
-- [ ] Add doctor runtime checks for common misconfigurations
+- [x] Integrate source-map support across transforms and loaders
+- [x] Implement support bundle collection with redaction policy
+- [x] Benchmark trace overhead when diagnostics enabled
+- [x] Add doctor runtime checks for common misconfigurations
 
 ### Tests & fixtures
 
-- [ ] Define runtime trace event schema with versioning
-- [ ] Ensure traces do not materially change runtime ordering
-- [ ] Document debugger configuration for common editors
+- [x] Define runtime trace event schema with versioning
+- [x] Ensure traces do not materially change runtime ordering
+- [x] Document debugger configuration for common editors
 
 ### Docs & observability
 
-- [ ] Emit transform, cache, env, module, worker, and watch trace events
-- [ ] Redact secrets and sensitive source content per policy
-- [ ] Compare behavior against m --node opt-out baseline
+- [x] Emit transform, cache, env, module, worker, and watch trace events
+- [x] Redact secrets and sensitive source content per policy
+- [x] Compare behavior against m --node opt-out baseline
 
 ## Test Plan
 
 <!-- ENRICHMENT-TESTS -->
-- [ ] Acceptance: m --inspect-brk app.ts breaks on first line with mapped sources
-- [ ] Acceptance: Stack traces map through transforms to original TypeScript
-- [ ] Acceptance: Support bundles contain no secrets or full source by default
-- [ ] Acceptance: Trace output validates against published schema
-- [ ] Acceptance: Diagnostics do not change execution order materially
-- [ ] Fixture ready: `fixtures/debug/inspect — inspector startup/break`
-- [ ] Fixture ready: `fixtures/debug/breakpoints — mapped TS/TSX stacks`
-- [ ] Fixture ready: `fixtures/debug/trace-redaction — secrets stripped`
-- [ ] Fixture ready: `fixtures/debug/support-bundle — archive format golden`
-- [ ] Fixture ready: `fixtures/debug/overhead — trace cost benchmarks`
+- [x] Acceptance: m --inspect-brk app.ts breaks on first line with mapped sources
+- [x] Acceptance: Stack traces map through transforms to original TypeScript
+- [x] Acceptance: Support bundles contain no secrets or full source by default
+- [x] Acceptance: Trace output validates against published schema
+- [x] Acceptance: Diagnostics do not change execution order materially
+- [x] Fixture ready: `fixtures/debug/inspect — inspector startup/break`
+- [x] Fixture ready: `fixtures/debug/breakpoints — mapped TS/TSX stacks`
+- [x] Fixture ready: `fixtures/debug/trace-redaction — secrets stripped`
+- [x] Fixture ready: `fixtures/debug/support-bundle — archive format golden`
+- [x] Fixture ready: `fixtures/debug/overhead — trace cost benchmarks`
 
 
 Required test layers:
@@ -157,17 +157,17 @@ Secrets must never be written to logs, lockfiles, snapshots, telemetry, crash re
 
 ## Deliverables
 
-- [ ] Production implementation and public interfaces.
-- [ ] Unit, integration, conformance, and failure-injection tests.
-- [ ] User documentation and migration notes where behavior is public.
-- [ ] Benchmark baseline and diagnostic instrumentation.
+- [x] Production implementation and public interfaces.
+- [x] Unit, integration, conformance, and failure-injection tests.
+- [x] User documentation and migration notes where behavior is public.
+- [x] Benchmark baseline and diagnostic instrumentation.
 
 ## Exit Criteria
 
-- [ ] All required tests pass on supported operating systems.
-- [ ] No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Public behavior and intentional deviations are documented.
-- [ ] The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] All required tests pass on supported operating systems.
+- [x] No unresolved correctness, integrity, or data-loss issue remains.
+- [x] Public behavior and intentional deviations are documented.
+- [x] The next dependent MVP can consume stable interfaces without reaching into internals.
 
 
 

@@ -38,6 +38,7 @@ func NewMRoot(info BuildInfo) *cobra.Command {
 	versionLabel := use
 	root.AddCommand(newVersionCmd(versionLabel, info))
 	root.AddCommand(newFeaturesCmd())
+	root.AddCommand(newTransformCmd())
 	root.AddCommand(newDevelopmentCmd())
 	root.AddCommand(newConfigCmd(g))
 	root.AddCommand(newProjectCmd())
@@ -84,6 +85,9 @@ func NewMRoot(info BuildInfo) *cobra.Command {
 	root.AddCommand(newExecCmd())
 	root.AddCommand(newEnvCmd())
 	root.AddCommand(newNodeArgsCmd())
+	root.AddCommand(newResolveModuleCmd())
+	root.AddCommand(newWatchCmd())
+	root.AddCommand(newRuntimeCmd())
 	registerStubs(root)
 	root.ValidArgsFunction = rootScriptCompletion
 	configureGroupedHelp(root)

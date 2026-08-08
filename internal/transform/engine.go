@@ -52,6 +52,15 @@ func (e *esbuildEngine) Transform(ctx context.Context, req TransformRequest) (Tr
 		sourceMap = api.SourceMapExternal
 	}
 
+	// If sourceMap mode is none but tsconfig has sourceMap:true, upgrade to external.
+	if sourceMap == api.SourceMapNone && req.NormalizedOpts.SourceMap {
+		sourceMap = api.SourceMapExternal
+	}
+	// tsconfig inlineSourceMap:true can override to inline.
+	if req.NormalizedOpts.InlineSourceMap && sourceMap != api.SourceMapExternal {
+		sourceMap = api.SourceMapInline
+	}
+
 	format := mapFormat(req.Format)
 	// Respect tsconfig module setting for format when not explicit.
 	if req.NormalizedOpts.Module != "" {
@@ -67,18 +76,30 @@ func (e *esbuildEngine) Transform(ctx context.Context, req TransformRequest) (Tr
 
 	jsxMode := api.JSXTransform // default
 	jsxSet := false
+	jsxDev := false
 	if req.NormalizedOpts.JSX != "" {
 		switch strings.ToLower(req.NormalizedOpts.JSX) {
 		case "react":
 			jsxMode = api.JSXTransform
 			jsxSet = true
-		case "react-jsx", "react-jsxdev":
+		case "react-jsx":
 			jsxMode = api.JSXAutomatic
 			jsxSet = true
+		case "react-jsxdev":
+			jsxMode = api.JSXAutomatic
+			jsxSet = true
+			jsxDev = true
 		case "preserve":
 			jsxMode = api.JSXPreserve
 			jsxSet = true
 		}
+	}
+
+	sourcesContent := api.SourcesContentInclude
+	// inlineSources: nil (absent) or true → include source content (tsc default).
+	// Explicit false → exclude source content.
+	if req.NormalizedOpts.InlineSources != nil && !*req.NormalizedOpts.InlineSources {
+		sourcesContent = api.SourcesContentExclude
 	}
 
 	transformOpts := api.TransformOptions{
@@ -86,7 +107,7 @@ func (e *esbuildEngine) Transform(ctx context.Context, req TransformRequest) (Tr
 		Target:            esbuildTarget,
 		Format:            format,
 		Sourcemap:         sourceMap,
-		SourcesContent:    api.SourcesContentInclude,
+		SourcesContent:    sourcesContent,
 		Sourcefile:        req.SourcePath,
 		Define:            nil,
 		Pure:              nil,
@@ -99,6 +120,53 @@ func (e *esbuildEngine) Transform(ctx context.Context, req TransformRequest) (Tr
 	}
 	if jsxSet {
 		transformOpts.JSX = jsxMode
+	}
+	if jsxDev {
+		transformOpts.JSXDev = true
+	}
+
+	// JSX classic runtime: factory and fragment functions.
+	if req.NormalizedOpts.JSXFactory != "" {
+		transformOpts.JSXFactory = req.NormalizedOpts.JSXFactory
+	}
+	if req.NormalizedOpts.JSXFragmentFactory != "" {
+		transformOpts.JSXFragment = req.NormalizedOpts.JSXFragmentFactory
+	}
+
+	// JSX automatic runtime: custom import source (default is "react").
+	if req.NormalizedOpts.JSXImportSource != "" {
+		transformOpts.JSXImportSource = req.NormalizedOpts.JSXImportSource
+	}
+
+	// Source root for external source maps.
+	if req.NormalizedOpts.SourceRoot != "" {
+		transformOpts.SourceRoot = req.NormalizedOpts.SourceRoot
+	}
+
+	// Pass compiler options through TsconfigRaw so esbuild can read
+	// options we don't map to dedicated api.TransformOptions fields.
+	// esbuild handles: experimentalDecorators, useDefineForClassFields,
+	// verbatimModuleSyntax.
+	var tsconfigOpts []string
+	if req.NormalizedOpts.ExperimentalDecorators {
+		tsconfigOpts = append(tsconfigOpts, `"experimentalDecorators":true`)
+	}
+	if req.NormalizedOpts.UseDefineForClassFields != nil {
+		if *req.NormalizedOpts.UseDefineForClassFields {
+			tsconfigOpts = append(tsconfigOpts, `"useDefineForClassFields":true`)
+		} else {
+			tsconfigOpts = append(tsconfigOpts, `"useDefineForClassFields":false`)
+		}
+	}
+	if req.NormalizedOpts.VerbatimModuleSyntax != nil {
+		if *req.NormalizedOpts.VerbatimModuleSyntax {
+			tsconfigOpts = append(tsconfigOpts, `"verbatimModuleSyntax":true`)
+		} else {
+			tsconfigOpts = append(tsconfigOpts, `"verbatimModuleSyntax":false`)
+		}
+	}
+	if len(tsconfigOpts) > 0 {
+		transformOpts.TsconfigRaw = `{"compilerOptions":{` + strings.Join(tsconfigOpts, ",") + `}}`
 	}
 
 	result := api.Transform(string(req.SourceBytes), transformOpts)
@@ -133,6 +201,8 @@ func mapLoader(l LoaderKind) api.Loader {
 	switch l {
 	case LoaderTS:
 		return api.LoaderTS
+	case LoaderTSX:
+		return api.LoaderTSX
 	case LoaderMTS:
 		return api.LoaderTS // esbuild handles MTS same as TS
 	case LoaderCTS:

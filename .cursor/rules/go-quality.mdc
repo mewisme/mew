@@ -11,7 +11,7 @@ alwaysApply: false
 
 Run before push (smallest scope first, then repo-wide):
 
-```powershell
+```sh
 gofmt -w <changed-go-files>
 go test ./path/to/touched/package -count=1
 go vet ./...
@@ -21,8 +21,8 @@ go test ./... -count=1
 
 Install the pinned linter once per machine:
 
-```powershell
-./tools/install.ps1
+```sh
+make tools
 ```
 
 Version pin: [`tools/versions.env`](tools/versions.env). Config: [`.golangci.yml`](.golangci.yml).

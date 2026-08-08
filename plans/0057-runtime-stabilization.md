@@ -74,50 +74,50 @@ Every new package must expose narrow interfaces, accept `context.Context` for ca
 
 ### Contracts & types
 
-- [ ] Run syntax and framework corpus across supported Node versions
-- [ ] Freeze runtime protocol versions (transform IPC, trace, loader bridge)
-- [ ] Document fallback behavior and known limitations
-- [ ] Record waivers with owners for documented divergences
+- [x] Run syntax and framework corpus across supported Node versions
+- [x] Freeze runtime protocol versions (transform IPC, trace, loader bridge)
+- [x] Document fallback behavior and known limitations
+- [x] Record waivers with owners for documented divergences
 
 ### Core logic
 
-- [ ] Certify CJS/ESM/loader/worker/watch coverage with published results
-- [ ] Publish runtime support matrix with certification evidence
-- [ ] Integrate runtime conformance into CI stop-the-line gates
-- [ ] Ensure plain Node escape hatch remains behaviorally plain
+- [ ] Certify CJS/ESM/loader/worker/watch coverage with published results *(pending: CI exact-head certification observation for final commit)*
+- [ ] Publish runtime support matrix with certification evidence *(pending: CI exact-head certification observation)*
+- [x] Integrate runtime conformance into CI stop-the-line gates
+- [x] Ensure plain Node escape hatch remains behaviorally plain
 
 ### CLI / UX
 
-- [ ] Run Node compatibility and --node opt-out differential tests
-- [ ] Verify no transform cache corruption or source-map integrity bugs
-- [ ] Run long-running worker/watch multi-day soak
-- [ ] Gate experimental runtime features behind explicit flags
+- [x] Run Node compatibility and --node opt-out differential tests
+- [x] Verify no transform cache corruption or source-map integrity bugs
+- [x] Run long-running worker/watch multi-day soak
+- [x] Gate experimental runtime features behind explicit flags
 
 ### Tests & fixtures
 
-- [ ] Soak transform service for crashes, leaks, and IPC failure recovery
-- [ ] Verify watch and workers do not leak processes or file descriptors
-- [ ] Sign off interfaces for 0060 Node manager integration
+- [x] Soak transform service for crashes, leaks, and IPC failure recovery
+- [x] Verify watch and workers do not leak processes or file descriptors
+- [x] Sign off interfaces for 0060 Node manager integration
 
 ### Docs & observability
 
-- [ ] Complete security review of IPC and embedded runtime assets
-- [ ] Run cold/warm startup benchmark suite with baselines
-- [ ] Update feature inventory to shipped for certified runtime features
+- [x] Complete security review of IPC and embedded runtime assets
+- [x] Run cold/warm startup benchmark suite with baselines
+- [x] Update feature inventory to shipped for certified runtime features
 
 ## Test Plan
 
 <!-- ENRICHMENT-TESTS -->
-- [ ] Acceptance: Supported syntax and Node versions have published certification
-- [ ] Acceptance: No known transform cache corruption or source-map integrity bug
-- [ ] Acceptance: Watch and workers pass leak soak without orphaned processes
-- [ ] Acceptance: Plain Node escape hatch matches stock node within tolerance
-- [ ] Acceptance: Runtime conformance passes on Linux, macOS, Windows
-- [ ] Fixture ready: `tests/conformance/runtime/syntax-corpus — language features`
-- [ ] Fixture ready: `tests/conformance/runtime/frameworks — React/etc smoke`
-- [ ] Fixture ready: `tests/conformance/runtime/node-matrix — version certification`
-- [ ] Fixture ready: `tests/conformance/runtime/transform-soak — service crash/leak`
-- [ ] Fixture ready: `tests/conformance/runtime/opt-out — plain Node differential`
+- [ ] Acceptance: Supported syntax and Node versions have published certification *(pending: CI exact-head certification observation)*
+- [x] Acceptance: No known transform cache corruption or source-map integrity bug
+- [x] Acceptance: Watch and workers pass leak soak without orphaned processes
+- [x] Acceptance: Plain Node escape hatch matches stock node within tolerance
+- [ ] Acceptance: Runtime conformance passes on Linux, macOS, Windows *(pending: CI observation)*
+- [x] Fixture ready: `tests/conformance/runtime/syntax-corpus — language features`
+- [x] Fixture ready: `tests/conformance/runtime/frameworks — React/etc smoke`
+- [x] Fixture ready: `tests/conformance/runtime/node-matrix — version certification`
+- [x] Fixture ready: `tests/conformance/runtime/transform-soak — service crash/leak`
+- [x] Fixture ready: `tests/conformance/runtime/opt-out — plain Node differential`
 
 
 Required test layers:
@@ -153,17 +153,17 @@ Secrets must never be written to logs, lockfiles, snapshots, telemetry, crash re
 
 ## Deliverables
 
-- [ ] Production implementation and public interfaces.
-- [ ] Unit, integration, conformance, and failure-injection tests.
-- [ ] User documentation and migration notes where behavior is public.
-- [ ] Benchmark baseline and diagnostic instrumentation.
+- [x] Production implementation and public interfaces.
+- [x] Unit, integration, conformance, and failure-injection tests.
+- [x] User documentation and migration notes where behavior is public.
+- [x] Benchmark baseline and diagnostic instrumentation.
 
 ## Exit Criteria
 
-- [ ] Supported syntax and Node versions have published certification results.
-- [ ] No known transform cache corruption or source-map integrity bug.
-- [ ] Watch and workers do not leak processes, services, or file descriptors.
-- [ ] Plain Node escape hatch remains behaviorally plain.
+- [ ] Supported syntax and Node versions have published certification results. *(pending: CI exact-head certification observation)*
+- [x] No known transform cache corruption or source-map integrity bug.
+- [x] Watch and workers do not leak processes, services, or file descriptors.
+- [x] Plain Node escape hatch remains behaviorally plain.
 
 
 

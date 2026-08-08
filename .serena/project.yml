@@ -1,0 +1,110 @@
+project_name: "mew"
+
+# Primary semantic languages in this repository.
+# Go is first because it owns the core product/runtime architecture.
+# `typescript` also covers JavaScript, including .js/.mjs/.cjs runtime assets.
+languages:
+  - go
+  - python
+  - typescript
+
+encoding: "utf-8"
+line_ending: "lf"
+
+# Keep activation cheap, deterministic, and offline.
+# Do not install dependencies, build, or generate files merely to activate Serena.
+activation_command:
+activation_command_timeout: 180.0
+
+# Inherit the globally selected backend so the project remains usable with
+# either LSP or JetBrains.
+language_backend:
+
+# Respect repository exclusions. The existing .gitignore already excludes
+# build artifacts, caches, node_modules, local agent state, and local env files.
+ignore_all_files_in_gitignore: true
+ignored_paths: []
+
+# Index the whole repository because production code, tests, tools, plans,
+# scripts, and embedded runtime assets interact across top-level directories.
+ls_workspace_folders:
+  - "."
+ls_additional_workspace_folders: []
+
+# Keep language-server customization empty until a concrete project need
+# requires overriding the Serena defaults.
+ls_specific_settings: {}
+
+read_only: false
+excluded_tools: []
+included_optional_tools: []
+fixed_tools: []
+
+# Inherit global modes. Project-specific behavior belongs in initial_prompt
+# rather than silently changing Serena's tool/mode surface.
+default_modes:
+added_modes:
+
+# Let the global Serena configuration control the symbol enrichment budget.
+symbol_info_budget:
+
+read_only_memory_patterns: []
+ignored_memory_patterns: []
+
+initial_prompt: |
+  You are working on MewJS (Mew Node Package Manager), a Go-based CLI/runtime project with embedded Node.js loader/preload assets and repository-local Go/Python tooling.
+
+  Use Serena as the primary semantic code-navigation layer:
+  - Before editing implementation code, locate the owning symbols, definitions, implementations, callers, and references.
+  - Trace cross-file control flow, data flow, resource ownership, and error propagation before changing shared behavior.
+  - Prefer symbol/reference tools over broad text search when semantic navigation can answer the question.
+  - Use text/pattern search for configuration, generated files, string protocols, documentation, and cases where language-server symbols are unsuitable.
+  - After semantic refactors, search references again to detect stale callers, duplicate implementations, unreachable paths, or partially migrated contracts.
+  - For cross-language runtime changes, trace both the Go side and the embedded Node.js asset side before editing either side.
+
+  Preserve repository architecture:
+  - Keep each concern in one canonical implementation whenever practical.
+  - Reuse existing abstractions instead of creating parallel resolver, lifecycle, protocol, validation, generation, or diagnostic stacks.
+  - Preserve public contracts, typed error classifications, security boundaries, deterministic behavior, and cross-platform behavior unless the active task explicitly changes them.
+  - Treat comments and documentation as claims to verify against source and tests, not as authority over current implementation.
+  - Keep changes strictly scoped to the active issue. Record unrelated defects instead of opportunistically fixing them.
+  - Do not continue into later plan/issues unless explicitly requested.
+
+  Repository tooling rules:
+  - Read `TOOLS.md` before creating or changing tooling, Make targets, test orchestration, generation, validation, CI, benchmark, certification, install/uninstall, or maintenance workflows.
+  - Treat `TOOLS.md` as the canonical repository tool inventory.
+  - Inspect the root `Makefile` before composing command sequences. Prefer canonical repository commands when they cover the required operation.
+  - Do not duplicate an existing repository tool with an ad-hoc script or command sequence.
+
+  Test policy:
+  - Determine the affected test surface from changed symbols/files and their direct consumers.
+  - Run only tests affected by the current implementation change; do not run the entire repository suite merely for reassurance.
+  - Prefer a host-provided builtin `testexec` tool when available.
+  - Otherwise prefer the repository's canonical adaptive test runner:
+    `go run ./tools/testexec -workers auto ...`
+  - Use the maximum safe CPU-based parallelism supported by the selected runner; do not hard-code arbitrary worker counts.
+  - If `testexec` cannot cover the required test, use the most focused applicable Make target.
+  - Use direct test-runner commands only when neither `testexec` nor a focused Make target provides the required coverage.
+  - Do not execute equivalent tests repeatedly through multiple runners.
+  - Expand the test surface only when changed shared code has real downstream consumers, and explain that dependency.
+  - Run race, fuzz, security, platform, or integration coverage only when the changed code affects those test classes.
+
+  Generated and embedded files:
+  - Do not hand-edit generated output when a canonical source/generator exists.
+  - After modifying embedded runtime assets, use the repository's canonical asset regeneration/check tooling.
+  - After modifying generated plans or documentation, edit the canonical source and regenerate through repository tooling.
+  - Run generation/asset checks only when the changed files affect those outputs.
+
+  Runtime/security rules:
+  - Treat Node preloads, loaders, workers, child processes, IPC peers, filesystem state, environment variables, and user code as explicit trust boundaries.
+  - Never weaken authentication, credential isolation, validation, lifecycle cleanup, or fail-closed behavior merely for compatibility.
+  - Never expose bearer credentials, bootstrap capabilities, private environment values, or transient internal state through diagnostics.
+  - For lifecycle/concurrency changes, identify resource ownership and terminal-state rules before implementation.
+  - For resolver/loader changes, preserve Node fallback/error behavior unless the active issue explicitly changes that contract.
+
+  Completion discipline:
+  - Inspect the final integrated diff after all edits or subagent work has been combined.
+  - Report exact tests and checks actually executed; never claim unverified success.
+  - Do not claim CI success from local tests.
+  - Do not claim certification, stabilization, parity, or MVP completion without the exact evidence required by the repository plans.
+  - Keep unfinished 005x work marked unfinished until its own exit criteria are satisfied.

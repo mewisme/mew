@@ -71,7 +71,14 @@ type leadingDispatchFlags struct {
 	noWsBail      bool
 	wsOnlyTouched bool
 
-	node bool
+	node    bool
+	loaders []string
+
+	envFile   []string
+	noEnvFile bool
+	mode      string
+
+	v8Args []string // collected --inspect, --inspect-brk, and other V8 flags
 }
 
 // PhaseAResult is the output of the leading-global parser (Phase A).
@@ -181,6 +188,12 @@ func dispatchOnlyFlagNames() []string {
 		"workspace-bail",
 		"no-workspace-bail",
 		"node",
+		"loader",
+		"env-file",
+		"no-env-file",
+		"mode",
+		"inspect",
+		"inspect-brk",
 	}
 }
 
@@ -277,8 +290,20 @@ func consumeLeadingFlag(arg string, args []string, i int, leading *leadingDispat
 	case "no-workspace-bail":
 		leading.noWsBail = true
 		leading.wsOnlyTouched = true
+	case "loader":
+		leading.loaders = append(leading.loaders, value)
 	case "node":
 		leading.node = parseBoolValue(value, true)
+	case "env-file":
+		leading.envFile = append(leading.envFile, value)
+	case "no-env-file":
+		leading.noEnvFile = parseBoolValue(value, true)
+	case "mode":
+		leading.mode = value
+	case "inspect":
+		leading.v8Args = append(leading.v8Args, argToV8Flag(arg, name, value, inline, hasValue))
+	case "inspect-brk":
+		leading.v8Args = append(leading.v8Args, argToV8Flag(arg, name, value, inline, hasValue))
 	default:
 		return 0, apperr.New(apperr.Usage, "dispatch", name, fmt.Sprintf("unknown flag %q", name))
 	}
@@ -290,11 +315,24 @@ func consumeLeadingFlag(arg string, args []string, i int, leading *leadingDispat
 
 func needsValue(name string) bool {
 	switch name {
-	case "output", "log-level", "cwd", "config", "filter", "workspace-concurrency", "workspace-order", "workspace-output":
+	case "output", "log-level", "cwd", "config", "filter", "workspace-concurrency", "workspace-order", "workspace-output", "loader", "env-file", "mode":
 		return true
 	default:
 		return false
 	}
+}
+
+// argToV8Flag reconstructs a V8 flag argument from the split parts for
+// passthrough to Node. Flags like --inspect and --inspect-brk are consumed
+// by Phase A but forwarded verbatim to Node's argument vector.
+func argToV8Flag(arg, name string, value string, inline, hasValue bool) string {
+	if hasValue {
+		if inline {
+			return "--" + name + "=" + value
+		}
+		return "--" + name + " " + value
+	}
+	return "--" + name
 }
 
 // parseBoolValue returns the boolean interpretation of a flag value.
@@ -521,7 +559,7 @@ func ResolveDispatch(root *cobra.Command, phase PhaseAResult, cwd string, eff *c
 	// Detect runtime file selectors for direct execution (after scripts, before bins).
 	// Exact package scripts win over bare file names per documented dispatch precedence.
 	if RuntimeEnabled() && runtime.IsRuntimeFile(selector) {
-		// Deferred extensions (.tsx/.jsx) → actionable plan-0052 deferral message.
+		// Deferred extensions (.jsx) → actionable plan-deferral message.
 		if plan, ok := runtime.IsNextPlanExt(selector); ok {
 			return DispatchResult{
 				Kind:      OutcomeUnknown,

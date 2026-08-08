@@ -16,14 +16,15 @@ import (
 type ConfigErrorKind string
 
 const (
-	ConfigErrIO             ConfigErrorKind = "io"
-	ConfigErrParse          ConfigErrorKind = "parse"
-	ConfigErrExtendsMissing ConfigErrorKind = "extends_missing"
-	ConfigErrExtendsCycle   ConfigErrorKind = "extends_cycle"
-	ConfigErrExtendsDepth   ConfigErrorKind = "extends_depth"
-	ConfigErrExtendsPackage ConfigErrorKind = "extends_package"
-	ConfigErrExtendsInvalid ConfigErrorKind = "extends_invalid"
-	ConfigErrOptionInvalid  ConfigErrorKind = "option_invalid"
+	ConfigErrIO                ConfigErrorKind = "io"
+	ConfigErrParse             ConfigErrorKind = "parse"
+	ConfigErrExtendsMissing    ConfigErrorKind = "extends_missing"
+	ConfigErrExtendsCycle      ConfigErrorKind = "extends_cycle"
+	ConfigErrExtendsDepth      ConfigErrorKind = "extends_depth"
+	ConfigErrExtendsPackage    ConfigErrorKind = "extends_package"
+	ConfigErrExtendsInvalid    ConfigErrorKind = "extends_invalid"
+	ConfigErrOptionInvalid     ConfigErrorKind = "option_invalid"
+	ConfigErrOptionUnsupported ConfigErrorKind = "option_unsupported"
 )
 
 // ConfigError is a typed tsconfig failure that preserves the config path
@@ -56,15 +57,98 @@ func (e *ConfigError) Unwrap() error {
 // only affect type-checking (noEmit) are excluded.
 // baseUrl and paths affect module resolution (0052+) and are carried
 // for cache key stability.
+
+// PathMapping is a single tsconfig paths entry in canonical order.
+// Pattern is the alias key (e.g. "@app/*", "@app/internal/*", "*").
+// Targets are the replacement values in declared order.
+type PathMapping struct {
+	Pattern string   `json:"pattern"`
+	Targets []string `json:"targets"`
+}
+
+// sortPathMappings orders path mappings by TypeScript specificity:
+//  1. Exact patterns (no wildcard) first, sorted alphabetically.
+//  2. Wildcard patterns sorted by:
+//     a. Longer prefix before the first '*' (more specific) first.
+//     b. Shorter suffix after the last '*' (more specific) first.
+//     c. Alphabetically for deterministic tie-breaking.
+func sortPathMappings(mappings []PathMapping) {
+	sort.Slice(mappings, func(i, j int) bool {
+		pi, pj := mappings[i].Pattern, mappings[j].Pattern
+		hasStarI := strings.Contains(pi, "*")
+		hasStarJ := strings.Contains(pj, "*")
+
+		// Exact patterns (no '*') come before wildcard patterns.
+		if hasStarI != hasStarJ {
+			return !hasStarI
+		}
+
+		if hasStarI {
+			// Both wildcard: compare prefix length before first '*'.
+			preI := strings.Index(pi, "*")
+			preJ := strings.Index(pj, "*")
+			if preI != preJ {
+				return preI > preJ // longer prefix first
+			}
+			// Compare suffix length after last '*'.
+			sufI := len(pi) - strings.LastIndex(pi, "*") - 1
+			sufJ := len(pj) - strings.LastIndex(pj, "*") - 1
+			if sufI != sufJ {
+				return sufI < sufJ // shorter suffix first
+			}
+		}
+
+		// Tie-break: alphabetical.
+		return pi < pj
+	})
+}
+
 type NormalizedOptions struct {
-	Target                  string              `json:"target,omitempty"`
-	Module                  string              `json:"module,omitempty"`
-	UseDefineForClassFields bool                `json:"useDefineForClassFields,omitempty"`
-	VerbatimModuleSyntax    bool                `json:"verbatimModuleSyntax,omitempty"`
-	ImportHelpers           bool                `json:"importHelpers,omitempty"`
-	BaseURL                 string              `json:"baseUrl,omitempty"`
-	Paths                   map[string][]string `json:"paths,omitempty"`
-	JSX                     string              `json:"jsx,omitempty"`
+	Target string `json:"target,omitempty"`
+	Module string `json:"module,omitempty"`
+	// UseDefineForClassFields uses *bool to distinguish absent from explicit false.
+	// nil (absent)    → esbuild default (true)
+	// &true (explicit) → pass through to esbuild
+	// &false (explicit) → pass through to esbuild
+	UseDefineForClassFields *bool `json:"useDefineForClassFields,omitempty"`
+	// VerbatimModuleSyntax uses *bool to distinguish absent from explicit false.
+	// nil (absent)    → esbuild default
+	// &true (explicit) → pass through to esbuild
+	// &false (explicit) → pass through to esbuild
+	VerbatimModuleSyntax *bool               `json:"verbatimModuleSyntax,omitempty"`
+	ImportHelpers        bool                `json:"importHelpers,omitempty"`
+	BaseURL              string              `json:"baseUrl,omitempty"`
+	Paths                map[string][]string `json:"paths,omitempty"`
+	// PathMappings is the canonical ordered representation of Paths,
+	// sorted by TypeScript specificity (exact first, then longest prefix).
+	// The JS loader reads this field for deterministic resolution.
+	// Paths is retained for parsing/merge and backward compatibility.
+	PathMappings []PathMapping `json:"pathMappings,omitempty"`
+
+	// JSX
+	JSX                string `json:"jsx,omitempty"`
+	JSXFactory         string `json:"jsxFactory,omitempty"`
+	JSXFragmentFactory string `json:"jsxFragmentFactory,omitempty"`
+	JSXImportSource    string `json:"jsxImportSource,omitempty"`
+
+	// Decorators
+	ExperimentalDecorators bool `json:"experimentalDecorators,omitempty"`
+	EmitDecoratorMetadata  bool `json:"emitDecoratorMetadata,omitempty"`
+
+	// Source maps.
+	// InlineSources uses *bool to distinguish:
+	//   nil (absent)      → default (include source content, matching tsc default)
+	//   &true (explicit)  → include source content
+	//   &false (explicit) → exclude source content
+	SourceMap       bool   `json:"sourceMap,omitempty"`
+	InlineSourceMap bool   `json:"inlineSourceMap,omitempty"`
+	InlineSources   *bool  `json:"inlineSources,omitempty"`
+	SourceRoot      string `json:"sourceRoot,omitempty"`
+	MapRoot         string `json:"mapRoot,omitempty"`
+	// mapRoot is parsed and included in cache keys but NOT forwarded to esbuild.
+	// esbuild has no MapRoot option. mapRoot specifies where external tooling
+	// expects to find .map files; Mew manages map lifecycle through the cache,
+	// so mapRoot is informational (cache-keyed) only.
 }
 
 // NormalizedOptionsDigest returns a stable SHA-256 of the normalized options.
@@ -226,6 +310,38 @@ func NormalizeOptions(chain []TsconfigFile) (NormalizedOptions, error) {
 			return NormalizedOptions{}, err
 		}
 	}
+	// importHelpers requires tslib integration. esbuild does not support
+	// importing helpers from tslib; helpers are always inlined.
+	if opts.ImportHelpers {
+		return NormalizedOptions{}, &ConfigError{
+			Kind: ConfigErrOptionUnsupported,
+			Path: chain[len(chain)-1].Path,
+			Err:  fmt.Errorf("importHelpers is not supported: esbuild always inlines helper functions; tslib imports are not available"),
+		}
+	}
+	// emitDecoratorMetadata requires type information only available to a
+	// type checker. Mew is a transpiler; reject it explicitly rather than
+	// silently ignoring it.
+	if opts.EmitDecoratorMetadata {
+		return NormalizedOptions{}, &ConfigError{
+			Kind: ConfigErrOptionUnsupported,
+			Path: chain[len(chain)-1].Path,
+			Err:  fmt.Errorf("emitDecoratorMetadata is not supported: Mew is a transpiler, not a type checker; metadata emission requires compiler type information"),
+		}
+	}
+
+	// Build canonical ordered path mappings for deterministic resolution.
+	if len(opts.Paths) > 0 {
+		opts.PathMappings = make([]PathMapping, 0, len(opts.Paths))
+		for pattern, targets := range opts.Paths {
+			opts.PathMappings = append(opts.PathMappings, PathMapping{
+				Pattern: pattern,
+				Targets: targets,
+			})
+		}
+		sortPathMappings(opts.PathMappings)
+	}
+
 	return opts, nil
 }
 
@@ -271,6 +387,27 @@ func applyCompilerOptions(opts *NormalizedOptions, path string, raw map[string]a
 		}
 		opts.JSX = s
 	}
+	if v, ok := coMap["jsxFactory"]; ok {
+		s, isStr := v.(string)
+		if !isStr {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("jsxFactory must be a string")}
+		}
+		opts.JSXFactory = s
+	}
+	if v, ok := coMap["jsxFragmentFactory"]; ok {
+		s, isStr := v.(string)
+		if !isStr {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("jsxFragmentFactory must be a string")}
+		}
+		opts.JSXFragmentFactory = s
+	}
+	if v, ok := coMap["jsxImportSource"]; ok {
+		s, isStr := v.(string)
+		if !isStr {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("jsxImportSource must be a string")}
+		}
+		opts.JSXImportSource = s
+	}
 
 	// Boolean options: child overrides parent. Distinguish explicit false from absent.
 	if v, ok := coMap["useDefineForClassFields"]; ok {
@@ -278,14 +415,16 @@ func applyCompilerOptions(opts *NormalizedOptions, path string, raw map[string]a
 		if !isBool {
 			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("useDefineForClassFields must be a boolean")}
 		}
-		opts.UseDefineForClassFields = b
+		val := b
+		opts.UseDefineForClassFields = &val
 	}
 	if v, ok := coMap["verbatimModuleSyntax"]; ok {
 		b, isBool := v.(bool)
 		if !isBool {
 			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("verbatimModuleSyntax must be a boolean")}
 		}
-		opts.VerbatimModuleSyntax = b
+		val := b
+		opts.VerbatimModuleSyntax = &val
 	}
 	if v, ok := coMap["importHelpers"]; ok {
 		b, isBool := v.(bool)
@@ -293,6 +432,56 @@ func applyCompilerOptions(opts *NormalizedOptions, path string, raw map[string]a
 			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("importHelpers must be a boolean")}
 		}
 		opts.ImportHelpers = b
+	}
+	if v, ok := coMap["experimentalDecorators"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("experimentalDecorators must be a boolean")}
+		}
+		opts.ExperimentalDecorators = b
+	}
+	if v, ok := coMap["emitDecoratorMetadata"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("emitDecoratorMetadata must be a boolean")}
+		}
+		opts.EmitDecoratorMetadata = b
+	}
+	if v, ok := coMap["sourceMap"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("sourceMap must be a boolean")}
+		}
+		opts.SourceMap = b
+	}
+	if v, ok := coMap["inlineSourceMap"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("inlineSourceMap must be a boolean")}
+		}
+		opts.InlineSourceMap = b
+	}
+	if v, ok := coMap["inlineSources"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("inlineSources must be a boolean")}
+		}
+		val := b
+		opts.InlineSources = &val
+	}
+	if v, ok := coMap["sourceRoot"]; ok {
+		s, isStr := v.(string)
+		if !isStr {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("sourceRoot must be a string")}
+		}
+		opts.SourceRoot = s
+	}
+	if v, ok := coMap["mapRoot"]; ok {
+		s, isStr := v.(string)
+		if !isStr {
+			return &ConfigError{Kind: ConfigErrOptionInvalid, Path: path, Err: fmt.Errorf("mapRoot must be a string")}
+		}
+		opts.MapRoot = s
 	}
 
 	// Paths: child paths replace parent paths for the same key.
@@ -327,25 +516,10 @@ func applyCompilerOptions(opts *NormalizedOptions, path string, raw map[string]a
 
 // UnsupportedOptions returns tsconfig option names that are unsupported.
 func UnsupportedOptions(raw map[string]any) []string {
-	supported := map[string]bool{
-		"target":                  true,
-		"module":                  true,
-		"moduleResolution":        true,
-		"useDefineForClassFields": true,
-		"verbatimModuleSyntax":    true,
-		"importHelpers":           true,
-		"baseUrl":                 true,
-		"paths":                   true,
-		"jsx":                     true,
-		"jsxFactory":              true,
-		"jsxFragmentFactory":      true,
-		"jsxImportSource":         true,
-		"sourceMap":               true,
-		"inlineSourceMap":         true,
-	}
+	recognized := OptionSet()
 	var unsupported []string
 	for k := range raw {
-		if !supported[strings.TrimSpace(k)] {
+		if !recognized[strings.TrimSpace(k)] {
 			unsupported = append(unsupported, k)
 		}
 	}

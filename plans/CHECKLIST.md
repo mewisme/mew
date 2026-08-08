@@ -3,10 +3,10 @@
 ## Program status
 
 - Current MVP: **0052** — Runtime MVP 3 — JSX, Decorators, and Source-Map Parity
-- Last updated: 2026-08-06
+- Last updated: 2026-08-07
 - Source of truth: per-MVP files under `plans/00xx-*.md`
 - Regenerate: `python3 plans/scripts/enrich_and_generate.py`
-- Last certified core commit: `6831061ab58f7d387c71d0fd9619489e6eff17f7`
+- Runtime certification: pending (0057 stabilization gate not yet reached)
 
 ## Do now
 

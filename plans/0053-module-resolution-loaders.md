@@ -74,50 +74,50 @@ Every new package must expose narrow interfaces, accept `context.Context` for ca
 
 ### Contracts & types
 
-- [ ] Plan resolver augmentation without replacing Node resolution wholesale
-- [ ] Implement ESM custom loader and preload chaining
-- [ ] Support package imports/exports and conditions where explicitly adopted
-- [ ] Test CJS/ESM interop and monorepo path alias fixtures
+- [x] Plan resolver augmentation without replacing Node resolution wholesale
+- [x] Implement ESM custom loader and preload chaining
+- [x] Support package imports/exports and conditions where explicitly adopted
+- [x] Test CJS/ESM interop and monorepo path alias fixtures
 
 ### Core logic
 
-- [ ] Preserve Node CJS and ESM resolution semantics baseline
-- [ ] Document and enforce custom loader execution order
-- [ ] Implement self-reference and URL module policy boundaries
-- [ ] Test custom loader composition scenarios
+- [x] Preserve Node CJS and ESM resolution semantics baseline
+- [x] Document and enforce custom loader execution order
+- [x] Implement self-reference and URL module policy boundaries
+- [x] Test custom loader composition scenarios
 
 ### CLI / UX
 
-- [ ] Implement tsconfig baseUrl and paths matcher
-- [ ] Pass original user loader arguments through chain
-- [ ] Preserve Node-compatible error context plus Mew explanations
-- [ ] Benchmark resolution hot path with cache
+- [x] Implement tsconfig baseUrl and paths matcher
+- [x] Pass original user loader arguments through chain
+- [x] Preserve Node-compatible error context plus Mew explanations
+- [x] Benchmark resolution hot path with cache
 
 ### Tests & fixtures
 
-- [ ] Implement .js to .ts development extension mapping policy
-- [ ] Implement isolated node_modules layout awareness
-- [ ] Add module trace diagnostics command
+- [x] Implement .js to .ts development extension mapping policy
+- [x] Implement isolated node_modules layout awareness
+- [x] Add module trace diagnostics command
 
 ### Docs & observability
 
-- [ ] Implement CJS require registration hooks where needed
-- [ ] Implement Yarn PnP runtime resolution adapter
-- [ ] Test Node package exports/imports corpus
+- [x] Implement CJS require registration hooks where needed
+- [x] Implement Yarn PnP runtime resolution adapter
+- [x] Test Node package exports/imports corpus
 
 ## Test Plan
 
 <!-- ENRICHMENT-TESTS -->
-- [ ] Acceptance: tsconfig paths resolve consistently in monorepos
-- [ ] Acceptance: Custom loaders run in documented order with user args preserved
-- [ ] Acceptance: PnP projects resolve modules through adapter
-- [ ] Acceptance: Resolution errors include Node context and Mew guidance
-- [ ] Acceptance: Plain Node opt-out bypasses Mew resolution hooks
-- [ ] Fixture ready: `fixtures/resolution/exports — package exports corpus`
-- [ ] Fixture ready: `fixtures/resolution/cjs-esm — interop matrix`
-- [ ] Fixture ready: `fixtures/resolution/paths — tsconfig path aliases`
-- [ ] Fixture ready: `fixtures/resolution/pnp — Yarn PnP projects`
-- [ ] Fixture ready: `fixtures/resolution/custom-loader — loader chaining`
+- [x] Acceptance: tsconfig paths resolve consistently in monorepos
+- [x] Acceptance: Custom loaders run in documented order with user args preserved
+- [x] Acceptance: PnP projects resolve modules through adapter
+- [x] Acceptance: Resolution errors include Node context and Mew guidance
+- [x] Acceptance: Plain Node opt-out bypasses Mew resolution hooks
+- [x] Fixture ready: `fixtures/resolution/exports — package exports corpus`
+- [x] Fixture ready: `fixtures/resolution/cjs-esm — interop matrix`
+- [x] Fixture ready: `fixtures/resolution/paths — tsconfig path aliases`
+- [x] Fixture ready: `fixtures/resolution/pnp — Yarn PnP projects`
+- [x] Fixture ready: `fixtures/resolution/custom-loader — loader chaining`
 
 
 Required test layers:
@@ -153,17 +153,17 @@ Secrets must never be written to logs, lockfiles, snapshots, telemetry, crash re
 
 ## Deliverables
 
-- [ ] Production implementation and public interfaces.
-- [ ] Unit, integration, conformance, and failure-injection tests.
-- [ ] User documentation and migration notes where behavior is public.
-- [ ] Benchmark baseline and diagnostic instrumentation.
+- [x] Production implementation and public interfaces.
+- [x] Unit, integration, conformance, and failure-injection tests.
+- [x] User documentation and migration notes where behavior is public.
+- [x] Benchmark baseline and diagnostic instrumentation.
 
 ## Exit Criteria
 
-- [ ] All required tests pass on supported operating systems.
-- [ ] No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Public behavior and intentional deviations are documented.
-- [ ] The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] All required tests pass on supported operating systems.
+- [x] No unresolved correctness, integrity, or data-loss issue remains.
+- [x] Public behavior and intentional deviations are documented.
+- [x] The next dependent MVP can consume stable interfaces without reaching into internals.
 
 
 

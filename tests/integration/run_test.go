@@ -7,12 +7,18 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/mewisme/mew/internal/cli"
 	"github.com/mewisme/mew/internal/testkit"
 )
+
+// newMRootMu protects concurrent calls to cli.NewMRoot.
+// cobra.AddTemplateFunc writes to a global map without synchronization,
+// and configureGroupedHelp calls it from NewMRoot.
+var newMRootMu sync.Mutex
 
 func setupRunFixture(t *testing.T, rel string) string {
 	t.Helper()
@@ -29,7 +35,9 @@ func runMProject(t *testing.T, projDir string, args ...string) (int, string) {
 
 func runMProjectCtx(t *testing.T, ctx context.Context, projDir string, args ...string) (int, string) {
 	t.Helper()
+	newMRootMu.Lock()
 	cliRoot := cli.NewMRoot(cli.BuildInfo{Version: "0.0.0-test"})
+	newMRootMu.Unlock()
 	outBuf := new(bytes.Buffer)
 	errBuf := new(bytes.Buffer)
 	cliRoot.SetOut(outBuf)

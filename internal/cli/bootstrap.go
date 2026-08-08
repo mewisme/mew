@@ -195,7 +195,7 @@ func newGlobalFlagSet(dst *globalFlags, root, target *cobra.Command) *pflag.Flag
 	// it comes from the same list the drift test checks.
 	for _, name := range dispatchOnlyFlagNames() {
 		switch name {
-		case "workspace-concurrency", "workspace-order", "workspace-output":
+		case "workspace-concurrency", "workspace-order", "workspace-output", "loader":
 			addPlaceholderFlag(fs, name, "", false)
 		default:
 			addPlaceholderFlag(fs, name, "", true)

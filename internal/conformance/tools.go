@@ -70,6 +70,14 @@ func ResolveCommitSHA(repoRoot string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// toolVersion returns the Mew tool version from linker stamp or "dev".
+func toolVersion() string {
+	// Populated by ldflags at build time; reads the version embedded by
+	// cmd/m and cmd/mx. When conformance runs via `go run ./cmd/m`,
+	// the stamp is absent and we return "dev".
+	return "dev"
+}
+
 func conformanceRequireTools() bool {
 	return os.Getenv("MEW_CONFORMANCE_REQUIRE_TOOLS") == "1"
 }

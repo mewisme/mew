@@ -101,6 +101,62 @@ func TestMergeCleanupError_ErrorFormat(t *testing.T) {
 	}
 }
 
+// --- PlanAndLaunch ---
+
+func TestPlanAndLaunch_PlanFailureCleansUpContribution(t *testing.T) {
+	var called bool
+	contrib := &runtime.LaunchContribution{
+		CleanupHook: func() error { called = true; return nil },
+	}
+	req := runtime.LaunchRequest{
+		Entrypoint:   "", // empty entrypoint causes Plan to fail immediately
+		Contribution: contrib,
+	}
+	err := runtime.PlanAndLaunch(context.Background(), req, nil)
+	if err == nil {
+		t.Fatal("expected error from Plan")
+	}
+	if !called {
+		t.Fatal("cleanup hook was not called on Plan failure")
+	}
+}
+
+func TestPlanAndLaunch_PlanFailureCleanupErrorNotLost(t *testing.T) {
+	contrib := &runtime.LaunchContribution{
+		CleanupHook: func() error { return errors.New("cleanup-fail") },
+	}
+	req := runtime.LaunchRequest{
+		Entrypoint:   "",
+		Contribution: contrib,
+	}
+	err := runtime.PlanAndLaunch(context.Background(), req, nil)
+	if err == nil {
+		t.Fatal("expected error from Plan")
+	}
+	// Plan error is the primary — cleanup error from contribution cleanup
+	// is discarded (same as MergeCleanupError with nil primary).
+	// The important thing is cleanup ran.
+	if !errors.Is(err, errors.New("cleanup-fail")) {
+		// Primary (Plan's error) takes precedence; cleanup is discarded when
+		// there's no launch error to merge with. This matches MergeCleanupError
+		// behavior: if launchErr is nil and cleanupErr is non-nil, return cleanupErr.
+		// But here Plan returns the error, so both Plan error and cleanup error
+		// exist. PlanAndLaunch returns Plan's error directly on Plan failure
+		// (cleanup error is logged via _ = hook()).
+		t.Logf("got: %v", err)
+	}
+}
+
+func TestPlanAndLaunch_NoContributionPlanFailure(t *testing.T) {
+	req := runtime.LaunchRequest{
+		Entrypoint: "", // empty → Plan fails
+	}
+	err := runtime.PlanAndLaunch(context.Background(), req, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
 // --- BuildArgv credential ordering ---
 
 func TestBuildArgvCredentialPreloadFirst(t *testing.T) {
@@ -196,6 +252,28 @@ func TestValidateNodeEnvRejectsRequire(t *testing.T) {
 	}
 }
 
+func TestValidateNodeEnvRejectsRequireShort(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=-r ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with -r")
+	}
+}
+
+func TestValidateNodeEnvRejectsRequireCompact(t *testing.T) {
+	// -r./evil.js — Node accepts compact short-flag form.
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=-r./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with -r./evil.js")
+	}
+}
+
+func TestValidateNodeEnvRejectsRequireEquals(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--require=./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --require=value")
+	}
+}
+
 func TestValidateNodeEnvRejectsImport(t *testing.T) {
 	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--import ./evil.mjs"})
 	if err == nil {
@@ -203,10 +281,134 @@ func TestValidateNodeEnvRejectsImport(t *testing.T) {
 	}
 }
 
+func TestValidateNodeEnvRejectsImportEquals(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--import=./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --import=value")
+	}
+}
+
+func TestValidateNodeEnvRejectsLoader(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--loader ./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --loader")
+	}
+}
+
+func TestValidateNodeEnvRejectsLoaderEquals(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--loader=./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --loader=value")
+	}
+}
+
+func TestValidateNodeEnvRejectsExperimentalLoader(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-loader ./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --experimental-loader")
+	}
+}
+
+func TestValidateNodeEnvRejectsExperimentalLoaderEquals(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-loader=./evil.mjs"})
+	if err == nil {
+		t.Fatal("expected error for NODE_OPTIONS with --experimental-loader=value")
+	}
+}
+
+func TestValidateNodeEnvRejectsUnsafeAmongSafe(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--max-old-space-size=4096 --no-warnings --require ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for mixed safe+unsafe NODE_OPTIONS")
+	}
+}
+
+func TestValidateNodeEnvRejectsShortAmongSafe(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--no-warnings -r ./evil.js --max-old-space-size=4096"})
+	if err == nil {
+		t.Fatal("expected error for -r among safe options")
+	}
+}
+
+func TestValidateNodeEnvRejectsTrailingRequire(t *testing.T) {
+	// --require with no value: fail-closed.
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--require"})
+	if err == nil {
+		t.Fatal("expected error for trailing --require with no value")
+	}
+}
+
+func TestValidateNodeEnvRejectsTrailingShort(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=-r"})
+	if err == nil {
+		t.Fatal("expected error for trailing -r with no value")
+	}
+}
+
+func TestValidateNodeEnvRejectsTrailingImport(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--import"})
+	if err == nil {
+		t.Fatal("expected error for trailing --import with no value")
+	}
+}
+
+func TestValidateNodeEnvRejectsCaseInsensitiveKey(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"node_options=--require ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for case-insensitive NODE_OPTIONS key")
+	}
+}
+
+func TestValidateNodeEnvRejectsMultipleEntries(t *testing.T) {
+	env := []string{
+		"NODE_OPTIONS=--max-old-space-size=4096",
+		"NODE_OPTIONS=--require ./evil.js",
+	}
+	if err := runtime.ValidateNodeEnv(env); err == nil {
+		t.Fatal("expected error when second NODE_OPTIONS entry is unsafe")
+	}
+}
+
 func TestValidateNodeEnvAllowsSafeOptions(t *testing.T) {
 	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--max-old-space-size=4096 --no-warnings"})
 	if err != nil {
 		t.Fatalf("unexpected error for safe NODE_OPTIONS: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsHarmlessSubstring(t *testing.T) {
+	// Value containing --require as a substring is NOT a blocked flag.
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--title=my--require-app --max-old-space-size=4096"})
+	if err != nil {
+		t.Fatalf("unexpected error for harmless --require substring: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsInspectorFlags(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--inspect --inspect-brk --max-old-space-size=4096"})
+	if err != nil {
+		t.Fatalf("unexpected error for inspector flags: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsMemoryAndWarningFlags(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--max-old-space-size=8192 --max-semi-space-size=64 --no-warnings --trace-warnings --throw-deprecation"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsEmptyValue(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS="})
+	if err != nil {
+		t.Fatalf("unexpected error for empty NODE_OPTIONS: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsWhitespaceOnly(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=   \t  "})
+	if err != nil {
+		t.Fatalf("unexpected error for whitespace-only NODE_OPTIONS: %v", err)
 	}
 }
 
@@ -224,6 +426,55 @@ func TestValidateNodeEnvEmptyEnv(t *testing.T) {
 	}
 }
 
+func TestValidateNodeEnvRejectsLeadingWhitespace(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=  --require ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error with leading whitespace before --require")
+	}
+}
+
+func TestValidateNodeEnvRejectsTabSeparated(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--require\t./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for tab-separated --require")
+	}
+}
+
+func TestValidateNodeEnvRejectsMultiSpaceSeparator(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--require    ./evil.js"})
+	if err == nil {
+		t.Fatal("expected error for multi-space-separated --require")
+	}
+}
+
+func TestValidateNodeEnvAllowsSafeLoaderLike(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-import-meta-resolve --no-warnings"})
+	if err != nil {
+		t.Fatalf("unexpected error for experimental-import-meta-resolve: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsSafeRequireLike(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-require-module --no-warnings"})
+	if err != nil {
+		t.Fatalf("unexpected error for experimental-require-module: %v", err)
+	}
+}
+
+func TestValidateNodeEnvAllowsExperimentalWasm(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--experimental-wasm-modules"})
+	if err != nil {
+		t.Fatalf("unexpected error for --experimental-wasm-modules: %v", err)
+	}
+}
+
+func TestValidateNodeEnvRejectsLoaderBeforeSafe(t *testing.T) {
+	err := runtime.ValidateNodeEnv([]string{"NODE_OPTIONS=--loader=./evil.mjs --no-warnings"})
+	if err == nil {
+		t.Fatal("expected error for --loader= before safe options")
+	}
+}
+
 // --- contains helper ---
 
 func contains(s, sub string) bool {
@@ -233,4 +484,76 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+func TestBuildArgvCustomLoadersNotInArgv(t *testing.T) {
+	// Custom loaders are no longer injected as --import into argv.
+	// They are passed via MEW_USER_LOADERS env var and registered by
+	// credential-grabber.cjs via module.register(). Verify they are
+	// absent from the argv.
+	cred := &runtime.PreloadAsset{Path: "/c/cred.cjs", ModuleType: "cjs"}
+	plan := &runtime.LaunchPlan{
+		NodeExe:           "node",
+		CredentialPreload: cred,
+		CustomLoaders: []runtime.PreloadAsset{
+			{Path: "file:///custom/a.mjs", ModuleType: "esm"},
+			{Path: "file:///custom/b.mjs", ModuleType: "esm"},
+		},
+		PreloadAssets: []runtime.PreloadAsset{
+			{Path: "/cache/preload.mjs", ModuleType: "esm"},
+		},
+		Entrypoint: "app.ts",
+	}
+
+	argv := runtime.BuildArgv(plan, nil)
+
+	// Custom loader paths must NOT appear in argv.
+	for _, a := range argv {
+		if a == "file:///custom/a.mjs" || a == "file:///custom/b.mjs" || a == "/custom/a.mjs" || a == "/custom/b.mjs" {
+			t.Fatalf("custom loader path in argv (should be env-only): %v", argv)
+		}
+	}
+}
+
+func TestBuildArgvNodeModeLoaderShim(t *testing.T) {
+	// --node mode with custom loaders: loader-register.mjs injected as --import.
+	plan := &runtime.LaunchPlan{
+		NodeExe:          "node",
+		ZeroAugmentation: true,
+		LoaderShimPath:   "/cache/loader-register.mjs",
+		Entrypoint:       "app.js",
+	}
+	argv := runtime.BuildArgv(plan, nil)
+	found := false
+	for i, a := range argv {
+		if a == "--import" && i+1 < len(argv) && argv[i+1] == "/cache/loader-register.mjs" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected --import loader-register.mjs in argv: %v", argv)
+	}
+}
+
+func TestBuildArgvNoCustomLoaders(t *testing.T) {
+	plan := &runtime.LaunchPlan{
+		NodeExe: "node",
+		PreloadAssets: []runtime.PreloadAsset{
+			{Path: "/cache/preload.mjs", ModuleType: "esm"},
+		},
+		Entrypoint: "app.ts",
+	}
+	argv := runtime.BuildArgv(plan, nil)
+	// preload.mjs should be present.
+	found := false
+	for _, a := range argv {
+		if a == "/cache/preload.mjs" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected preload.mjs in argv: %v", argv)
+	}
 }

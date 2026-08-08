@@ -75,8 +75,33 @@ can suggest a next step.
 ## Related commands
 
 ```text
+m doctor runtime                   runtime health checks (0056)
 m development doctor              contributor prerequisites (unchanged)
 m development doctor filesystem   detailed link-capability probe
 m recover                         clear incomplete transaction journals
 m lock validate                   lock-only validation used by the lock check
 ```
+
+## `m doctor runtime`
+
+```text
+m doctor runtime [--json] [--strict]
+```
+
+Health checks for the runtime subsystem (transform service, Node capabilities,
+loader bridge, watch backend, inspector, cache).
+
+| ID | Severity when failing | Notes |
+|---|---|---|
+| `node-capabilities` | fail | Node ≥18 with required preload/module-register capabilities |
+| `transform-handshake` | fail | Real transform session start + auth handshake |
+| `transform-roundtrip` | fail | esbuild transforms a minimal TS fixture end-to-end |
+| `source-map` | warn | Transform emits a valid source map |
+| `tsconfig` | fail/warn | tsconfig discovery + extends-chain load |
+| `runtime-cache` | warn/fail | Asset cache integrity + read/write probe |
+| `loader-bridge` | fail | Runtime assets + Node discovery for the loader bridge |
+| `watch-backend` | fail | Watcher factory succeeds (native or polling) |
+| `inspector` | fail/warn | Inspector flag parsing and argv build pipeline |
+| `worker` | warn/fail | Node ≥12 (worker_threads availability) |
+
+Exit codes and `--json`/`--strict` semantics match `m doctor`.

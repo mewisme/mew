@@ -8,6 +8,7 @@ type LoaderKind string
 
 const (
 	LoaderTS  LoaderKind = "ts"
+	LoaderTSX LoaderKind = "tsx"
 	LoaderMTS LoaderKind = "mts"
 	LoaderCTS LoaderKind = "cts"
 )

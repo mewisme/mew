@@ -15,36 +15,11 @@ Repository policy: [`.gitattributes`](.gitattributes) sets `* text eol=lf`. Ever
 3. Do not change an existing file's line-ending style unless the task requires it.
 4. Binary files are exempt; everything else is text unless proven otherwise.
 
-## Windows pitfalls
-
-PowerShell defaults to CRLF. Avoid:
-
-```powershell
-# BAD — often writes CRLF
-Set-Content -Path file.txt -Value $text
-Out-File -FilePath file.txt -InputObject $text
-```
-
-Prefer the Write/StrReplace editor tools (they preserve LF when the file uses LF). When shell output must land in a file:
-
-```powershell
-# GOOD — explicit LF
-[System.IO.File]::WriteAllText("file.txt", $text.Replace("`r`n", "`n"))
-```
-
-Or normalize after write:
-
-```powershell
-$p = "file.txt"
-$c = (Get-Content -Raw $p) -replace "`r`n", "`n"
-[System.IO.File]::WriteAllText($p, $c)
-```
-
 ## Quick check
 
-```powershell
+```sh
 git diff --check
-rg -l "`r" --glob '!*.png' --glob '!*.jpg' .
+grep -rl $'\r' --include='*.go' --include='*.md' --include='*.py' .
 ```
 
 Fix any CRLF before commit.

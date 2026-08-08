@@ -7,12 +7,19 @@ import (
 
 const ReportSchemaVersion = 2
 
-// Report is the machine-readable outcome of a core certification run.
+// Report is the machine-readable outcome of a certification run.
+// It is the canonical certification evidence format. Every field with
+// "omitempty" may be absent when not applicable; consumers must tolerate
+// missing optional fields. The CommitSHA, Matrix, Passed, and Suites
+// fields are always populated for a real (non-dry-run) execution.
 type Report struct {
 	SchemaVersion int           `json:"schemaVersion"`
 	Matrix        string        `json:"matrix"`
 	CommitSHA     string        `json:"commitSHA,omitempty"`
+	OS            string        `json:"os,omitempty"`
+	Arch          string        `json:"arch,omitempty"`
 	GoVersion     string        `json:"goVersion,omitempty"`
+	ToolVersion   string        `json:"toolVersion,omitempty"`
 	StartedAt     time.Time     `json:"startedAt"`
 	FinishedAt    time.Time     `json:"finishedAt"`
 	Passed        bool          `json:"passed"`
@@ -41,10 +48,11 @@ type SuiteResult struct {
 }
 
 const (
-	StatusPassed  = "passed"
-	StatusFailed  = "failed"
-	StatusSkipped = "skipped"
-	StatusPlanned = "planned"
+	StatusPassed        = "passed"
+	StatusFailed        = "failed"
+	StatusSkipped       = "skipped"
+	StatusPlanned       = "planned"
+	StatusNotApplicable = "not-applicable"
 )
 
 // EncodeJSON returns indented JSON for report.

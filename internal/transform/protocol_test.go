@@ -17,8 +17,10 @@ func TestFrameRoundTrip(t *testing.T) {
 		SourceDigest: transform.DigestString("const x: number = 1"),
 		Loader:       "ts",
 		Format:       "esm",
+		OptsDigest:   transform.DigestString(""),
 		NodeMajor:    20,
 		SourceMap:    "none",
+		CancelToken:  "req-1",
 	}
 	var buf bytes.Buffer
 	if err := transform.EncodeFrame(&buf, req); err != nil {
@@ -63,7 +65,10 @@ func TestEncodeFrameLargePayload(t *testing.T) {
 		SourceDigest: transform.DigestString("const x = 1;"),
 		Loader:       "ts",
 		Format:       "esm",
+		OptsDigest:   transform.DigestString(""),
 		NodeMajor:    20,
+		SourceMap:    "none",
+		CancelToken:  "large",
 	}
 	var buf bytes.Buffer
 	if err := transform.EncodeFrame(&buf, req); err != nil {
@@ -87,6 +92,7 @@ func TestValidateTransformRequestV2(t *testing.T) {
 				V: transform.ProtocolVersion, ID: "1", Op: "transform",
 				Path: "a.ts", Source: "x", SourceDigest: validDigest,
 				Loader: "ts", Format: "esm", NodeMajor: 20,
+				SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 			},
 			wantErr: false,
 		},
@@ -96,6 +102,7 @@ func TestValidateTransformRequestV2(t *testing.T) {
 				V: 1, ID: "1", Op: "transform",
 				Path: "a.ts", Source: "x", SourceDigest: validDigest,
 				Loader: "ts", Format: "esm", NodeMajor: 20,
+				SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 			},
 			wantErr: true,
 		},
@@ -105,6 +112,7 @@ func TestValidateTransformRequestV2(t *testing.T) {
 				V: transform.ProtocolVersion, ID: "1", Op: "transform",
 				Source: "x", SourceDigest: validDigest,
 				Loader: "ts", Format: "esm", NodeMajor: 20,
+				SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 			},
 			wantErr: true,
 		},
@@ -114,6 +122,7 @@ func TestValidateTransformRequestV2(t *testing.T) {
 				V: transform.ProtocolVersion, ID: "1", Op: "transform",
 				Path: "a.ts", Source: "x", SourceDigest: "not-hex",
 				Loader: "ts", Format: "esm", NodeMajor: 20,
+				SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 			},
 			wantErr: true,
 		},
@@ -123,6 +132,7 @@ func TestValidateTransformRequestV2(t *testing.T) {
 				V: transform.ProtocolVersion, ID: "1", Op: "bundle",
 				Path: "a.ts", Source: "x", SourceDigest: validDigest,
 				Loader: "ts", Format: "esm", NodeMajor: 20,
+				SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 			},
 			wantErr: true,
 		},
@@ -172,6 +182,7 @@ func TestTransformRequestV2ValidateLoader(t *testing.T) {
 		V: transform.ProtocolVersion, ID: "1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: transform.DigestString("x"),
 		Loader: "invalid", Format: "esm", NodeMajor: 20,
+		SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 	}
 	err := req.Validate()
 	if err == nil {
@@ -184,6 +195,7 @@ func TestTransformRequestV2ValidateFormat(t *testing.T) {
 		V: transform.ProtocolVersion, ID: "1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: transform.DigestString("x"),
 		Loader: "ts", Format: "umd", NodeMajor: 20,
+		SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 	}
 	err := req.Validate()
 	if err == nil {
@@ -196,17 +208,12 @@ func TestTransformRequestV2ValidateSourceMapMode(t *testing.T) {
 		V: transform.ProtocolVersion, ID: "1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: transform.DigestString("x"),
 		Loader: "ts", Format: "esm", NodeMajor: 20,
-		SourceMap: "foobar",
+		SourceMap:   "foobar",
+		CancelToken: "1", OptsDigest: transform.DigestString(""),
 	}
 	err := req.Validate()
 	if err == nil {
 		t.Fatal("expected error for unknown source-map mode")
-	}
-
-	// Empty source-map mode is OK (defaults to none).
-	req.SourceMap = ""
-	if err := req.Validate(); err != nil {
-		t.Fatalf("empty source-map should be valid: %v", err)
 	}
 }
 
@@ -215,6 +222,7 @@ func TestTransformRequestV2ValidateIDTooLong(t *testing.T) {
 		V: transform.ProtocolVersion, ID: string(make([]byte, 300)), Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: transform.DigestString("x"),
 		Loader: "ts", Format: "esm", NodeMajor: 20,
+		SourceMap: "none", CancelToken: string(make([]byte, 300)), OptsDigest: transform.DigestString(""),
 	}
 	err := req.Validate()
 	if err == nil {
@@ -234,6 +242,9 @@ func TestEncodeFrameRejectsOversized(t *testing.T) {
 		Loader:       "ts",
 		Format:       "esm",
 		NodeMajor:    20,
+		SourceMap:    "none",
+		CancelToken:  "1",
+		OptsDigest:   transform.DigestString(""),
 	}
 	var buf bytes.Buffer
 	err := transform.EncodeFrame(&buf, huge)
@@ -421,6 +432,7 @@ func TestTransformRequestV2ValidateNodeMajor(t *testing.T) {
 		V: transform.ProtocolVersion, ID: "1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: validDigest,
 		Loader: "ts", Format: "esm", NodeMajor: 99,
+		SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 	}
 	err := req.Validate()
 	if err == nil {
@@ -433,6 +445,7 @@ func TestTransformRequestV2ValidateSourceDigestMissing(t *testing.T) {
 		V: transform.ProtocolVersion, ID: "1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: "",
 		Loader: "ts", Format: "esm", NodeMajor: 20,
+		SourceMap: "none", CancelToken: "1", OptsDigest: transform.DigestString(""),
 	}
 	err := req.Validate()
 	if err == nil {
@@ -447,6 +460,7 @@ func TestTransformRequestV2ValidateOptsDigestMissing(t *testing.T) {
 		Path: "a.ts", Source: "x", SourceDigest: validDigest,
 		Options: `{"target":"ES2022"}`, OptsDigest: "",
 		Loader: "ts", Format: "esm", NodeMajor: 20,
+		SourceMap: "none", CancelToken: "1",
 	}
 	err := req.Validate()
 	if err == nil {
@@ -462,6 +476,7 @@ func TestTransformRequestV2ValidateOptionsLength(t *testing.T) {
 		Path: "a.ts", Source: "x", SourceDigest: validDigest,
 		Options: longOpts, OptsDigest: transform.DigestString(longOpts),
 		Loader: "ts", Format: "esm", NodeMajor: 20,
+		SourceMap: "none", CancelToken: "1",
 	}
 	err := req.Validate()
 	if err == nil {
@@ -475,6 +490,7 @@ func TestTransformRequestV2ValidateCancelTokenLength(t *testing.T) {
 		V: transform.ProtocolVersion, ID: "1", Op: "transform",
 		Path: "a.ts", Source: "x", SourceDigest: validDigest,
 		Loader: "ts", Format: "esm", NodeMajor: 20,
+		SourceMap: "none", OptsDigest: transform.DigestString(""),
 		CancelToken: string(make([]byte, 300)),
 	}
 	err := req.Validate()
@@ -491,5 +507,228 @@ func TestDigestString(t *testing.T) {
 	// Deterministic.
 	if d != transform.DigestString("hello") {
 		t.Fatal("digest not deterministic")
+	}
+}
+
+// ── Strict validation negative tests ────────────────────────────────
+
+func TestStrictUnmarshalRejectsUnknownFields(t *testing.T) {
+	// A valid transform request with an extra unknown field.
+	body := []byte(`{"v":2,"id":"1","op":"transform","path":"a.ts","source":"x","source_digest":"` +
+		transform.DigestString("x") + `","loader":"ts","format":"esm","opts_digest":"` +
+		transform.DigestString("") + `","node_major":20,"source_map":"none","cancel_token":"1","extra_field":"should_fail"}`)
+	var req transform.TransformRequestV2
+	err := transform.StrictUnmarshal(body, &req)
+	if err == nil {
+		t.Fatal("expected error for unknown field")
+	}
+}
+
+func TestStrictUnmarshalRejectsTrailingJSON(t *testing.T) {
+	body := []byte(`{"v":2,"id":"1","op":"transform","path":"a.ts","source":"x","source_digest":"` +
+		transform.DigestString("x") + `","loader":"ts","format":"esm","opts_digest":"` +
+		transform.DigestString("") + `","node_major":20,"source_map":"none","cancel_token":"1"}{"extra":"garbage"}`)
+	var req transform.TransformRequestV2
+	err := transform.StrictUnmarshal(body, &req)
+	if err == nil {
+		t.Fatal("expected error for trailing JSON")
+	}
+}
+
+func TestStrictUnmarshalRejectsUnknownFieldOnCancel(t *testing.T) {
+	// Cancel request with a field that belongs to transform.
+	body := []byte(`{"v":2,"id":"c1","op":"cancel","cancel_token":"tok","path":"/etc/passwd"}`)
+	var req transform.CancelRequest
+	err := transform.StrictUnmarshal(body, &req)
+	if err == nil {
+		t.Fatal("expected error for path field on cancel request")
+	}
+}
+
+func TestStrictUnmarshalRejectsUnknownFieldOnShutdown(t *testing.T) {
+	body := []byte(`{"v":2,"id":"s1","op":"shutdown","source":"evil"}`)
+	var req transform.ShutdownRequest
+	err := transform.StrictUnmarshal(body, &req)
+	if err == nil {
+		t.Fatal("expected error for source field on shutdown request")
+	}
+}
+
+func TestStrictUnmarshalRejectsUnknownFieldOnHealth(t *testing.T) {
+	body := []byte(`{"v":2,"id":"h1","op":"health","loader":"ts"}`)
+	var req transform.HealthRequest
+	err := transform.StrictUnmarshal(body, &req)
+	if err == nil {
+		t.Fatal("expected error for loader field on health request")
+	}
+}
+
+func TestReadFrameBodyRejectsOversized(t *testing.T) {
+	// Create a frame header claiming a payload larger than MaxFrameSize.
+	var buf bytes.Buffer
+	hdr := [4]byte{0xff, 0xff, 0xff, 0xff} // ~4 GiB
+	buf.Write(hdr[:])
+	_, err := transform.ReadFrameBody(&buf)
+	if err == nil {
+		t.Fatal("expected error for oversized frame body")
+	}
+}
+
+func TestPeekOp(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    []byte
+		wantOp  string
+		wantErr bool
+	}{
+		{name: "transform", body: []byte(`{"op":"transform"}`), wantOp: "transform", wantErr: false},
+		{name: "cancel", body: []byte(`{"op":"cancel"}`), wantOp: "cancel", wantErr: false},
+		{name: "shutdown", body: []byte(`{"op":"shutdown"}`), wantOp: "shutdown", wantErr: false},
+		{name: "health", body: []byte(`{"op":"health"}`), wantOp: "health", wantErr: false},
+		{name: "missing op", body: []byte(`{"v":2}`), wantOp: "", wantErr: false},
+		{name: "malformed", body: []byte(`not json`), wantOp: "", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			op, err := transform.PeekOp(tt.body)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PeekOp() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+			if op != tt.wantOp {
+				t.Errorf("PeekOp() = %q, want %q", op, tt.wantOp)
+			}
+		})
+	}
+}
+
+func TestTransformRequestV2Validate_MissingSourceMap(t *testing.T) {
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "1", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: transform.DigestString("x"),
+		Loader: "ts", Format: "esm", OptsDigest: transform.DigestString(""),
+		NodeMajor: 20, SourceMap: "", CancelToken: "1",
+	}
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing source-map mode")
+	}
+}
+
+func TestTransformRequestV2Validate_MissingCancelToken(t *testing.T) {
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "1", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: transform.DigestString("x"),
+		Loader: "ts", Format: "esm", OptsDigest: transform.DigestString(""),
+		NodeMajor: 20, SourceMap: "none", CancelToken: "",
+	}
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing cancel token")
+	}
+}
+
+func TestTransformRequestV2Validate_MissingOptsDigest(t *testing.T) {
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "1", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: transform.DigestString("x"),
+		Loader: "ts", Format: "esm", OptsDigest: "",
+		NodeMajor: 20, SourceMap: "none", CancelToken: "1",
+	}
+	err := req.Validate()
+	if err == nil {
+		t.Fatal("expected error for missing opts digest")
+	}
+}
+
+func TestTransformRequestV2Validate_EmptyOptionsStillRequiresDigest(t *testing.T) {
+	req := transform.TransformRequestV2{
+		V: transform.ProtocolVersion, ID: "1", Op: "transform",
+		Path: "a.ts", Source: "x", SourceDigest: transform.DigestString("x"),
+		Loader: "ts", Format: "esm",
+		Options: "", OptsDigest: transform.DigestString(""), // empty options, valid digest
+		NodeMajor: 20, SourceMap: "none", CancelToken: "1",
+	}
+	err := req.Validate()
+	if err != nil {
+		t.Fatalf("empty options with valid digest should pass: %v", err)
+	}
+}
+
+func TestHealthRequestValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     transform.HealthRequest
+		wantErr bool
+	}{
+		{
+			name:    "valid",
+			req:     transform.HealthRequest{V: transform.ProtocolVersion, ID: "1", Op: "health"},
+			wantErr: false,
+		},
+		{
+			name:    "wrong version",
+			req:     transform.HealthRequest{V: 1, ID: "1", Op: "health"},
+			wantErr: true,
+		},
+		{
+			name:    "missing id",
+			req:     transform.HealthRequest{V: transform.ProtocolVersion, Op: "health"},
+			wantErr: true,
+		},
+		{
+			name:    "wrong op",
+			req:     transform.HealthRequest{V: transform.ProtocolVersion, ID: "1", Op: "transform"},
+			wantErr: true,
+		},
+		{
+			name:    "id too long",
+			req:     transform.HealthRequest{V: transform.ProtocolVersion, ID: string(make([]byte, 300)), Op: "health"},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.req.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestShutdownRequestValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     transform.ShutdownRequest
+		wantErr bool
+	}{
+		{
+			name:    "valid",
+			req:     transform.ShutdownRequest{V: transform.ProtocolVersion, ID: "1", Op: "shutdown"},
+			wantErr: false,
+		},
+		{
+			name:    "wrong version",
+			req:     transform.ShutdownRequest{V: 1, ID: "1", Op: "shutdown"},
+			wantErr: true,
+		},
+		{
+			name:    "missing id",
+			req:     transform.ShutdownRequest{V: transform.ProtocolVersion, Op: "shutdown"},
+			wantErr: true,
+		},
+		{
+			name:    "wrong op",
+			req:     transform.ShutdownRequest{V: transform.ProtocolVersion, ID: "1", Op: "health"},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.req.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
 	}
 }

@@ -264,3 +264,84 @@ func strSliceEq(a, b []string) bool {
 	}
 	return true
 }
+
+func TestBuildArgvWithSourceMaps(t *testing.T) {
+	// When Node supports source-maps (>= 20.6), --enable-source-maps is added.
+	plan := &LaunchPlan{
+		NodeExe:          "/usr/bin/node",
+		EnableSourceMaps: true,
+		Entrypoint:       "app.js",
+		AppArgs:          []string{"--port", "3000"},
+	}
+	argv := BuildArgv(plan, nil)
+
+	found := false
+	for _, a := range argv {
+		if a == "--enable-source-maps" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("--enable-source-maps not found in argv: %v", argv)
+	}
+
+	// Position: after node exe, before entrypoint.
+	nodeIdx := indexOf(argv, "/usr/bin/node")
+	smIdx := indexOf(argv, "--enable-source-maps")
+	epIdx := indexOf(argv, "app.js")
+	if nodeIdx < 0 || smIdx < 0 || epIdx < 0 {
+		t.Fatalf("argv structure unexpected: %v", argv)
+	}
+	if nodeIdx >= smIdx || smIdx >= epIdx {
+		t.Errorf("--enable-source-maps must be between node exe and entrypoint: %v", argv)
+	}
+}
+
+func TestBuildArgvWithoutSourceMaps(t *testing.T) {
+	// When Node lacks source-maps capability, --enable-source-maps is absent.
+	plan := &LaunchPlan{
+		NodeExe:          "/usr/bin/node",
+		EnableSourceMaps: false,
+		Entrypoint:       "app.js",
+		AppArgs:          []string{"--port", "3000"},
+	}
+	argv := BuildArgv(plan, nil)
+
+	for _, a := range argv {
+		if a == "--enable-source-maps" {
+			t.Fatal("--enable-source-maps must not be present when capability absent")
+		}
+	}
+}
+
+func TestBuildArgvSourceMapsWithCredentialPreload(t *testing.T) {
+	// --enable-source-maps before credential grabber.
+	plan := &LaunchPlan{
+		NodeExe:           "/usr/bin/node",
+		EnableSourceMaps:  true,
+		CredentialPreload: &PreloadAsset{Path: "/cache/grabber.cjs", ModuleType: "cjs"},
+		Entrypoint:        "app.ts",
+	}
+
+	argv := BuildArgv(plan, []string{"--trace-warnings"})
+
+	smIdx := indexOf(argv, "--enable-source-maps")
+	credIdx := indexOf(argv, "--require")
+	userIdx := indexOf(argv, "--trace-warnings")
+	if smIdx < 0 || credIdx < 0 || userIdx < 0 {
+		t.Fatalf("argv structure unexpected: %v", argv)
+	}
+	if smIdx >= credIdx || credIdx >= userIdx {
+		t.Errorf("order must be: --enable-source-maps --require <grabber> --trace-warnings: got %v", argv)
+	}
+}
+
+func indexOf(slice []string, target string) int {
+	for i, s := range slice {
+		if s == target {
+			return i
+		}
+	}
+	return -1
+}

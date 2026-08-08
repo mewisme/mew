@@ -57,8 +57,11 @@ def _ext_to_module_type(suffix: str) -> str:
     return "cjs" if suffix == ".cjs" else "esm"
 
 
-def _default_role(module_type: str) -> str:
-    """Default role for a new asset based on moduleType."""
+def _default_role(module_type: str, name: str = "") -> str:
+    """Default role for a new asset based on moduleType and filename conventions."""
+    # Support modules are not injected into Node argv; they are loaded on demand.
+    if name.startswith("resolve-"):
+        return "loader-support"
     return "preload-cjs" if module_type == "cjs" else "preload-esm"
 
 
@@ -265,7 +268,7 @@ def generate_manifest(
                 # New asset — auto-detect what we can.
                 suffix = Path(path).suffix
                 module_type = _ext_to_module_type(suffix)
-                role = _default_role(module_type)
+                role = _default_role(module_type, name=Path(path).name)
                 entry = {
                     "name": Path(path).name,
                     "path": path,

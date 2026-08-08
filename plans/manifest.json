@@ -355,8 +355,8 @@
     },
     {
       "path": "CHECKLIST.md",
-      "bytes": 128831,
-      "sha256": "e9adb72621f2e5c5e81c2bbf2e5bda7410d59640153abd3b9ecb563f6f475a1e"
+      "bytes": 128833,
+      "sha256": "851c797de3a0b4fe2bc04e48a74a56957c0ea36abeb0b1ba8843a43d9c450609"
     },
     {
       "path": "INDEX.md",
@@ -365,8 +365,8 @@
     },
     {
       "path": "scripts/enrich_and_generate.py",
-      "bytes": 18430,
-      "sha256": "5d49a0928f223ab1151fd39e931e8f44ce377fbb60e28b976f75713eb312eae2"
+      "bytes": 18582,
+      "sha256": "8b8fe96fb3567e74d3861513932ab757b9f6d2fcb2d5d970f12def81ed97d590"
     },
     {
       "path": "scripts/enrichment-core.json",
@@ -400,8 +400,8 @@
     },
     {
       "path": "status.json",
-      "bytes": 981,
-      "sha256": "4b64a25fbc01f0f2a08775081bda04ee07e86e7d7d17ce6fecc9e0d1397ec7ba"
+      "bytes": 1009,
+      "sha256": "9d09ae4db439fee68ad41e1970d1a038f1430ce4c64ce92e14926c821e46cd1f"
     },
     {
       "path": "ux/accessibility-evidence.md",

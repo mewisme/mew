@@ -172,6 +172,10 @@ See [`runner.md`](runner.md) and [`cli.md`](cli.md).
 | Asset extraction failure | `ERR_M_RUNTIME_ASSET_EXTRACTION` | 1 | `runtime.cache` |
 | Asset cache read failure | `ERR_M_RUNTIME_ASSET_CACHE` | 1 | `assets.read` / `runtime.verify` |
 | Node process failed to start | `ERR_M_RUNTIME_NODE_START` | 1 | `runtime.launch` |
+| Inspector non-loopback bind rejected | `ERR_M_INSPECTOR_BIND` | 1 | `runtime.inspect` |
+| Inspector port out of range | `ERR_M_INSPECTOR_PORT` | 1 | `runtime.inspect` |
+| Inspector host malformed | `ERR_M_INSPECTOR_HOST` | 1 | `runtime.inspect` |
+| Conflicting inspector flag values | `ERR_M_INSPECTOR_DUPLICATE` | 1 | `runtime.inspect` |
 
 See [`runtime.md`](runtime.md).
 

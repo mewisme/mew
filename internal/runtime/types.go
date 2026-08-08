@@ -33,6 +33,11 @@ type LaunchRequest struct {
 	Stdio             LaunchStdio
 	ExperimentalState map[string]string
 	Contribution      *LaunchContribution
+	// Loaders are user-specified ESM loader paths (--loader flag).
+	// They are registered via module.register() by credential-grabber.cjs
+	// (augmented mode) or loader-register.mjs (--node mode) through the
+	// MEW_USER_LOADERS env var. No longer injected as bare --import.
+	Loaders []string
 }
 
 // LaunchStdio configures child process I/O.
@@ -48,12 +53,16 @@ type LaunchPlan struct {
 	NodeVersion       string
 	NodeCapabilities  []string
 	NodeArgv          []string
-	CredentialPreload *PreloadAsset // credential-grabber — always first in argv
+	CredentialPreload *PreloadAsset
+	CustomLoaders     []PreloadAsset // user --loader file:// URLs for env passthrough (no longer injected as --import)
+	LoaderShimPath    string         // loader-register.mjs path for --node mode with loaders
 	PreloadAssets     []PreloadAsset
 	Entrypoint        string
 	AppArgs           []string
 	EnvChanges        []string
 	ZeroAugmentation  bool
+	EnableSourceMaps  bool             // add --enable-source-maps to Node when capability present
+	Inspector         *InspectorConfig // normalized inspector flags (nil when not requested)
 	CleanupHook       func() error
 }
 

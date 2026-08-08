@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"reflect"
 	goruntime "runtime"
 	"strings"
@@ -18,10 +19,12 @@ import (
 	"github.com/mewisme/mew/internal/app"
 	"github.com/mewisme/mew/internal/apperr"
 	"github.com/mewisme/mew/internal/diagnostics"
+	"github.com/mewisme/mew/internal/dotenv"
 	"github.com/mewisme/mew/internal/presentation"
 	presprompt "github.com/mewisme/mew/internal/presentation/prompt"
 	"github.com/mewisme/mew/internal/prompt"
 	"github.com/mewisme/mew/internal/runtime"
+	"github.com/mewisme/mew/internal/trace"
 )
 
 // globalFlags holds persistent CLI presentation options.
@@ -532,19 +535,32 @@ func tryDirectDispatch(ctx context.Context, root *cobra.Command, g *globalFlags,
 		if augMode != runtime.AugmentNone && goruntime.GOOS == "windows" {
 			entrypoint = res.Canonical
 		}
+		envOverlay, buildErr := buildEnvOverlay(ac.CWD, phase.Leading)
+		if buildErr != nil {
+			rep := g.newReporter(root)
+			rep.Error(classifyCLIError(buildErr))
+			return apperr.ExitCode(buildErr), true
+		}
+		emitEnvTrace(ctx, phase.Leading, envOverlay, ac.CWD)
 		req := runtime.LaunchRequest{
 			Entrypoint:       entrypoint,
 			AppArgs:          phase.ForwardedArgs,
+			NodeV8Args:       append([]string(nil), phase.Leading.v8Args...),
 			WorkingDir:       ac.CWD,
 			AugmentationMode: augMode,
+			EnvOverlay:       envOverlay,
+			Loaders:          append([]string(nil), phase.Leading.loaders...),
 			Stdio: runtime.LaunchStdio{
 				Stdin:  os.Stdin,
 				Stdout: os.Stdout,
 				Stderr: os.Stderr,
 			},
 		}
-		// Attach transform session for TypeScript entrypoints.
-		if augMode != runtime.AugmentNone && isTypeScriptFile(res.FileRunPath) {
+		// Attach transform session when augmentation is active.
+		// The loader's resolve hook handles extension substitution for all
+		// entrypoints; the transform service must be available for any .ts
+		// files that are resolved via .js→.ts mapping.
+		if augMode != runtime.AugmentNone {
 			contrib, contribErr := buildTransformContribution(ctx, ac.CWD, res.FileRunPath, ac.Config)
 			if contribErr != nil {
 				rep := g.newReporter(root)
@@ -554,25 +570,13 @@ func tryDirectDispatch(ctx context.Context, root *cobra.Command, g *globalFlags,
 			req.Contribution = contrib
 		}
 
-		plan, planErr := runtime.Plan(ctx, req, ac.Config)
-		if planErr != nil {
-			rep := g.newReporter(root)
-			rep.Error(classifyCLIError(planErr))
-			return apperr.ExitCode(planErr), true
-		}
-		launchErr := runtime.Launch(ctx, plan, req)
-		// Always run cleanup hook after Node exit, on any outcome.
-		var cleanupErr error
-		if plan != nil && plan.CleanupHook != nil {
-			cleanupErr = plan.CleanupHook()
-		}
-		merged := runtime.MergeCleanupError(launchErr, cleanupErr)
-		if merged == nil {
+		launchErr := runtime.PlanAndLaunch(ctx, req, ac.Config)
+		if launchErr == nil {
 			return 0, true
 		}
 		rep := g.newReporter(root)
-		rep.Error(classifyCLIError(merged))
-		return apperr.ExitCode(merged), true
+		rep.Error(classifyCLIError(launchErr))
+		return apperr.ExitCode(launchErr), true
 	default:
 		return 0, false
 	}
@@ -739,4 +743,86 @@ func encodeDispatchJSON(res DispatchResult, selector string) ([]byte, error) {
 		return nil, err
 	}
 	return enc, nil
+}
+
+// buildEnvOverlay computes env overlay from .env files per CLI flags.
+// Order: auto-discovered files (if not --no-env-file), then explicit --env-file files.
+// --mode <mode> appends NODE_ENV=<mode> at the end (highest precedence within the overlay).
+func buildEnvOverlay(cwd string, leading leadingDispatchFlags) ([]string, error) {
+	if leading.noEnvFile && len(leading.envFile) == 0 {
+		if leading.mode != "" {
+			return []string{"NODE_ENV=" + leading.mode}, nil
+		}
+		return nil, nil
+	}
+
+	explicit := len(leading.envFile) > 0
+	var files []string
+	if explicit {
+		for _, f := range leading.envFile {
+			if filepath.IsAbs(f) {
+				files = append(files, f)
+			} else {
+				files = append(files, filepath.Join(cwd, f))
+			}
+		}
+	} else {
+		files = dotenv.Discover(cwd, leading.mode)
+	}
+
+	var envVars []string
+	var err error
+	if explicit {
+		envVars, err = dotenv.LoadRequired(files)
+	} else {
+		envVars, err = dotenv.Load(files)
+	}
+	if err != nil {
+		return nil, classifyEnvLoadError(err)
+	}
+
+	if leading.mode != "" {
+		envVars = append(envVars, "NODE_ENV="+leading.mode)
+	}
+	return envVars, nil
+}
+
+// classifyEnvLoadError maps a dotenv load error to an apperr.Error with the
+// appropriate stable code based on the underlying OS/filesystem error.
+func classifyEnvLoadError(err error) error {
+	msg := err.Error()
+	if strings.Contains(msg, "no such file") || strings.Contains(msg, "cannot find") {
+		return apperr.New(apperr.EnvFileNotFound, "env-file", "", err.Error())
+	}
+	if strings.Contains(msg, "permission denied") || strings.Contains(msg, "access is denied") {
+		return apperr.New(apperr.EnvFileRead, "env-file", "", err.Error())
+	}
+	return apperr.New(apperr.EnvFileParse, "env-file", "", err.Error())
+}
+
+// emitEnvTrace emits trace events for environment source decisions.
+// It reports the mode, source kind (explicit/discovered), and key names
+// without values. Never emits environment variable values.
+func emitEnvTrace(ctx context.Context, leading leadingDispatchFlags, overlay []string, cwd string) {
+	if len(overlay) == 0 && leading.mode == "" {
+		return
+	}
+	keys := make([]string, 0, len(overlay))
+	for _, kv := range overlay {
+		for i := 0; i < len(kv); i++ {
+			if kv[i] == '=' {
+				keys = append(keys, kv[:i])
+				break
+			}
+		}
+	}
+	precedence := "discovered"
+	if len(leading.envFile) > 0 {
+		precedence = "explicit"
+	}
+	trace.Emit(ctx, trace.CatEnv, trace.TypeEnvSource, trace.EnvData{
+		Mode:       leading.mode,
+		Keys:       keys,
+		Precedence: precedence,
+	})
 }

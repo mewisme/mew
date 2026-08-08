@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "currentMvp": "0052",
+  "currentMvp": "0057",
   "completedMvps": [
     "0001",
     "0002",
@@ -41,15 +41,14 @@
     "0045",
     "0046",
     "0050",
-    "0051"
-  ],
-  "plannedMvps": [
+    "0051",
     "0052",
     "0053",
     "0054",
     "0055",
-    "0056",
-    "0057",
+    "0056"
+  ],
+  "plannedMvps": [
     "0060",
     "0061",
     "0062",
@@ -70,6 +69,6 @@
     "0089",
     "0090"
   ],
-  "lastCertifiedCoreCommit": "6831061ab58f7d387c71d0fd9619489e6eff17f7",
-  "lastUpdated": "2026-08-06"
+  "lastUpdated": "2026-08-09",
+  "_certificationNote": "0057 implementation complete (conformance/certification/benchmark code shipped). Exact-head certification pending: requires CI gate observation for the final pushed commit on this branch. No self-certifying SHA is written into tracked files."
 }

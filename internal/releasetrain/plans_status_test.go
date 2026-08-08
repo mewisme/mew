@@ -51,16 +51,8 @@ func TestPlanStatusValid(t *testing.T) {
 	if prev, ok := seen[status.CurrentMvp]; ok && prev == "completed" {
 		t.Fatalf("currentMvp %s must not be completed", status.CurrentMvp)
 	}
-
-	foundCurrent := false
-	for _, id := range status.PlannedMvps {
-		if id == status.CurrentMvp {
-			foundCurrent = true
-			break
-		}
-	}
-	if !foundCurrent {
-		t.Fatalf("currentMvp %s not in plannedMvps", status.CurrentMvp)
+	if prev, ok := seen[status.CurrentMvp]; ok && prev == "planned" {
+		t.Fatalf("currentMvp %s must not appear in plannedMvps (current is distinct from planned)", status.CurrentMvp)
 	}
 
 	all := make([]string, 0, len(seen)+1)

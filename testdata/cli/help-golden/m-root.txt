@@ -28,6 +28,7 @@ Project and dependencies
 Run and execute
   env            Inspect execution environments
   view           View package metadata from the registry
+  watch          Watch files and restart on changes
 
 Inspect and diagnose
   ls             List dependency tree or workspace packages (m list)
@@ -67,6 +68,9 @@ Configuration and development
 
 Other
   node-args      Run a JS file with explicit Node/V8 flags
+  resolve-module Show how Mew resolves a module specifier
+  runtime        Inspect and trace runtime execution
+  transform      Inspect transform capabilities and compiler option support
 
 Flags:
       --accessible           accessible append-only output

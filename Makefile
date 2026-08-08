@@ -32,11 +32,14 @@ COMMIT      ?= $(shell $(GIT) rev-parse --short HEAD 2>/dev/null || echo unknown
 BUILD_DATE  ?= $(shell $(GIT) log -1 --format=%cd --date=format:%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
 LDFLAGS     := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate=$(BUILD_DATE)
 
+TESTEXEC           := $(GO) run ./tools/testexec
+TESTEXEC_WORKERS    ?= auto
 TEST_TIMEOUT        ?= 25m
 TEST_SHORT_TIMEOUT  ?= 25m
 TEST_INTEGRATION_TIMEOUT ?= 30m
 TEST_RACE_TIMEOUT   ?= 40m
 TEST_E2E_TIMEOUT    ?= 15m
+TEST_CRASH_TIMEOUT  ?= 30m
 
 # Platform. EXE is .exe on Windows; empty elsewhere.
 EXE ?=
@@ -82,18 +85,19 @@ help: ## Show this help
 	@echo "  clean-build       Remove build output directory"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test              Run full unit and integration suite"
+	@echo "  test              Run full unit and integration suite (adaptive parallel)"
 	@echo "  test-short        Run fast suite (skips soak and wall-clock)"
 	@echo "  test-unit         Run unit tests only"
-	@echo "  test-integration  Run integration tests"
+	@echo "  test-integration  Run integration tests (process-level sharding)"
 	@echo "  test-e2e          Run runtime E2E and Node version tests"
+	@echo "  test-crash        Run crash recovery suite (build tag: crash)"
 	@echo "  test-runtime      Run runtime, transform, and node tests"
 	@echo "  test-transform    Run transform tests"
 	@echo "  test-cli          Run CLI tests"
 	@echo "  test-runner       Run runner, process, and lifecycle tests"
 	@echo "  test-workspace    Run workspace and snapshot tests"
 	@echo "  test-race         Run race detector (requires CGO)"
-	@echo "  test-all          Run unit, integration, E2E, and race suites"
+	@echo "  test-all          Run full and race suites"
 	@echo ""
 	@echo "Quality:"
 	@echo "  vet               Run go vet"
@@ -148,6 +152,7 @@ help: ## Show this help
 	@echo "Overridable variables:"
 	@echo "  GO=$(GO)  PYTHON=$(PYTHON)  GIT=$(GIT)"
 	@echo "  GOLANGCI_LINT=$(GOLANGCI_LINT)  GOVULNCHECK=$(GOVULNCHECK)"
+	@echo "  TESTEXEC_WORKERS=$(TESTEXEC_WORKERS)  (auto, 1, or explicit N)"
 	@echo "  VERSION=$(VERSION)  BIN_DIR=$(BIN_DIR)  REPORTS_DIR=$(REPORTS_DIR)  EXE=$(EXE)"
 
 .PHONY: fmt
@@ -227,24 +232,24 @@ clean-build: ## Remove build output directory
 	rm -rf $(BIN_DIR)
 
 .PHONY: test
-test: ## Run full unit and integration suite
-	$(GO) test ./... -count=1 -timeout $(TEST_TIMEOUT)
+test: ## Run full unit and integration suite (adaptive parallel execution)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -timeout $(TEST_TIMEOUT)
 
 .PHONY: test-short
-test-short: ## Run fast suite (skips soak and wall-clock)
-	$(GO) test ./... -short -count=1 -timeout $(TEST_SHORT_TIMEOUT)
+test-short: ## Run fast suite (skips soak and wall-clock; adaptive parallel)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -short -timeout $(TEST_SHORT_TIMEOUT)
 
 .PHONY: test-unit
 test-unit: ## Run unit tests only (no integration, conformance, or E2E)
-	$(GO) test $$(go list ./... | grep -v '/tests/') -count=1 -timeout $(TEST_TIMEOUT)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -timeout $(TEST_TIMEOUT) $$(go list ./... | grep -v '/tests/')
 
 .PHONY: test-integration
-test-integration: ## Run integration tests
-	$(GO) test ./tests/integration/... -count=1 -timeout $(TEST_INTEGRATION_TIMEOUT)
+test-integration: ## Run integration tests (process-level sharding)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -timeout $(TEST_INTEGRATION_TIMEOUT) ./tests/integration/...
 
 .PHONY: test-e2e
 test-e2e: ## Run runtime E2E and Node version tests
-	$(GO) test ./tests/integration/... -count=1 -run 'RuntimeE2E|NodeVersion' -v -timeout $(TEST_E2E_TIMEOUT)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -run 'RuntimeE2E|NodeVersion' -v -timeout $(TEST_E2E_TIMEOUT) ./tests/integration/...
 
 .PHONY: test-runtime
 test-runtime: ## Run runtime, transform, and node tests
@@ -266,12 +271,16 @@ test-runner: ## Run runner/process/lifecycle tests
 test-workspace: ## Run workspace and snapshot tests
 	$(GO) test ./internal/workspace/... ./internal/snapshot/... -count=1 -timeout $(TEST_TIMEOUT)
 
+.PHONY: test-crash
+test-crash: ## Run crash recovery suite (build tag: crash)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -tags crash -timeout $(TEST_CRASH_TIMEOUT) ./tests/integration/...
+
 .PHONY: test-race
 test-race: ## Run race detector (requires CGO)
-	CGO_ENABLED=1 $(GO) test -race ./... -count=1 -timeout $(TEST_RACE_TIMEOUT)
+	CGO_ENABLED=1 $(TESTEXEC) -workers $(TESTEXEC_WORKERS) -race -timeout $(TEST_RACE_TIMEOUT)
 
 .PHONY: test-all
-test-all: test test-race test-e2e ## Run unit, integration, E2E, and race suites
+test-all: test test-race ## Run full and race suites
 
 .PHONY: vet
 vet: ## Run go vet
@@ -315,22 +324,22 @@ pre-push: quality test-short build ## Broader pre-push validation
 
 .PHONY: cert-runtime
 cert-runtime: ## Run runtime certification (full)
-	$(GO) run ./cmd/m conformance run core --json
+	$(GO) run ./cmd/m conformance run runtime --json
 
 .PHONY: cert-runtime-local
 cert-runtime-local: ## Run runtime certification (fast subset)
-	$(GO) run ./cmd/m conformance run core --filter fast --json
+	$(GO) run ./cmd/m conformance run runtime --filter runtime-failure --json
 
 .PHONY: cert-runtime-report
 cert-runtime-report: ## Run runtime certification with JSON report
 	@mkdir -p $(REPORTS_DIR)
-	$(GO) run ./cmd/m conformance run core --json > $(REPORTS_DIR)/core-report.json
+	$(GO) run ./cmd/m conformance run runtime --json > $(REPORTS_DIR)/runtime-report.json
 
 .PHONY: cert-check
 cert-check: ## Verify certification consistency (no external tools)
 	$(GO) test ./internal/conformance/... -count=1
 	$(GO) test ./tests/conformance/runner/... -count=1
-	$(GO) run ./cmd/m conformance run core --filter fast --json >/dev/null
+	$(GO) run ./cmd/m conformance run runtime --filter runtime-failure --json >/dev/null
 
 # Legacy certification aliases (preserved for compatibility).
 .PHONY: core-cert
@@ -564,7 +573,7 @@ check-runtime-assets: assets-check ## [alias] Verify runtime asset manifest
 .PHONY: help info doctor setup tools verify-tools
 .PHONY: fmt fmt-check generate generate-check assets assets-check plans plans-check
 .PHONY: build build-m build-mx build-all install clean-build
-.PHONY: test test-short test-unit test-integration test-e2e
+.PHONY: test test-short test-unit test-integration test-e2e test-crash
 .PHONY: test-runtime test-transform test-cli test-runner test-workspace
 .PHONY: test-race test-all
 .PHONY: vet lint diff-check staticcheck quality arch-check docs-check fixtures-check crash-shards-check

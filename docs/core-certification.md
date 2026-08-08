@@ -140,8 +140,9 @@ for patch-sandbox, provenance, store-integrity, and capsule evidence.
 3. **pnpm 11 patch config** — `patchedDependencies` may live in
    `pnpm-workspace.yaml`; fixtures retain dual `package.json#pnpm` fields for
    cross-major parity.
-4. **Differential npm/pnpm CI** — full 0080 runtime conformance program not in
-   0031 scope (`m conformance run runtime` deferred).
+4. **Differential npm/pnpm CI** — `m conformance run runtime` is implemented (0057)
+   with 12-cell Node×OS matrix in full CI; full 0080 conformance program scope
+   remains deferred.
 5. **Live Sigstore** — provenance verification uses fixture DSSE bundles in
    tests with `TrustFixtureKey`; production `m verify provenance` requires
    `TrustConfiguredKey` (configured public key). Live Fulcio/Sigstore roots
@@ -171,7 +172,7 @@ may be added in a backward-compatible way only.
 |---|---|
 | Core v1 beta channel promotion date | TBD — track in release train |
 | Yarn Berry features deferred post-0031 | PnP install/link; Plug'n'Play runtime |
-| `m conformance run runtime` scope | Deferred to MVP 0080 |
+| `m conformance run runtime` scope | Implemented (0057, `tests/conformance/runtime-matrix/`) |
 
 ## Sign-off
 

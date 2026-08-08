@@ -307,6 +307,79 @@ func TestParsePhaseANodeFlag(t *testing.T) {
 	}
 }
 
+func TestParsePhaseAInspectFlag(t *testing.T) {
+	// Bare --inspect
+	phase, err := ParsePhaseA([]string{"--inspect", "app.ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(phase.Leading.v8Args) != 1 || phase.Leading.v8Args[0] != "--inspect" {
+		t.Fatalf("v8Args=%v, want [--inspect]", phase.Leading.v8Args)
+	}
+	if phase.Selector != "app.ts" {
+		t.Fatalf("selector=%q, want app.ts", phase.Selector)
+	}
+}
+
+func TestParsePhaseAInspectBrkFlag(t *testing.T) {
+	// Bare --inspect-brk
+	phase, err := ParsePhaseA([]string{"--inspect-brk", "app.ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(phase.Leading.v8Args) != 1 || phase.Leading.v8Args[0] != "--inspect-brk" {
+		t.Fatalf("v8Args=%v, want [--inspect-brk]", phase.Leading.v8Args)
+	}
+	if phase.Selector != "app.ts" {
+		t.Fatalf("selector=%q, want app.ts", phase.Selector)
+	}
+}
+
+func TestParsePhaseAInspectWithPort(t *testing.T) {
+	// --inspect=127.0.0.1:9229
+	phase, err := ParsePhaseA([]string{"--inspect=127.0.0.1:9229", "app.ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(phase.Leading.v8Args) != 1 || phase.Leading.v8Args[0] != "--inspect=127.0.0.1:9229" {
+		t.Fatalf("v8Args=%v, want [--inspect=127.0.0.1:9229]", phase.Leading.v8Args)
+	}
+	if phase.Selector != "app.ts" {
+		t.Fatalf("selector=%q, want app.ts", phase.Selector)
+	}
+}
+
+func TestParsePhaseAInspectBrkWithPort(t *testing.T) {
+	// --inspect-brk=0.0.0.0:9230
+	phase, err := ParsePhaseA([]string{"--inspect-brk=0.0.0.0:9230", "app.ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(phase.Leading.v8Args) != 1 || phase.Leading.v8Args[0] != "--inspect-brk=0.0.0.0:9230" {
+		t.Fatalf("v8Args=%v, want [--inspect-brk=0.0.0.0:9230]", phase.Leading.v8Args)
+	}
+}
+
+func TestParsePhaseACombinedV8Flags(t *testing.T) {
+	// Multiple V8 flags combined
+	phase, err := ParsePhaseA([]string{"--inspect", "--inspect-brk=9229", "--node", "app.ts"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(phase.Leading.v8Args) != 2 {
+		t.Fatalf("v8Args=%v, want 2 entries", phase.Leading.v8Args)
+	}
+	if phase.Leading.v8Args[0] != "--inspect" {
+		t.Fatalf("v8Args[0]=%q, want --inspect", phase.Leading.v8Args[0])
+	}
+	if phase.Leading.v8Args[1] != "--inspect-brk=9229" {
+		t.Fatalf("v8Args[1]=%q, want --inspect-brk=9229", phase.Leading.v8Args[1])
+	}
+	if !phase.Leading.node {
+		t.Fatal("expected --node flag to be parsed")
+	}
+}
+
 func TestRuntimeGate(t *testing.T) {
 	t.Setenv("MEW_EXPERIMENTAL_RUNTIME", "")
 	if RuntimeEnabled() {
