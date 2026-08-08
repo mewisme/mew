@@ -3,9 +3,12 @@
 // require) and preload.mjs (via createRequire).
 //
 // localStorage: persisted to disk under the path given by the
-//   MEW_LOCAL_STORAGE_PATH env var.  Atomic write (tmp+fsync+rename)
-//   on every mutation.  Schema-versioned JSON.  Corrupt files are
-//   reset to empty (with a console.warn).
+//   MEW_LOCAL_STORAGE_PATH env var.  Cross-process mutations are
+//   serialized through a directory-based lock (mkdir is atomic on
+//   all supported platforms).  Every mutation reloads the latest
+//   committed state while holding the lock, applies the change, and
+//   writes atomically (temp+fsync+rename).  Readers check file mtime
+//   and reload when the store was modified externally.
 // sessionStorage: in-memory Map, never persisted.
 //
 // Keys and values are coerced to String.  Missing keys return null.
@@ -18,13 +21,20 @@
 
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
+var fs = require('node:fs');
+var path = require('node:path');
+var os = require('node:os');
+var crypto = require('node:crypto');
 
 // ---- constants ---------------------------------------------------------
 
 var SCHEMA_VERSION = 1;
 var DEFAULT_QUOTA = 5 * 1024 * 1024; // 5 MiB
+var LOCK_MAX_WAIT = 30 * 1000;       // 30 s
+var LOCK_RETRY = 25;                 // 25 ms
+var LOCK_GRACE = 5 * 1000;           // 5 s grace for malformed/missing owner
+var STALE_LOCK_MAX_AGE = 60 * 1000;  // 60 s fallback stale threshold
+var TEMP_CLEANUP_AGE = 5 * 60 * 1000; // 5 min for abandoned temp files
 
 // ---- helpers -----------------------------------------------------------
 
@@ -37,25 +47,196 @@ function quotaFromEnv() {
 }
 
 function storageError(name, message) {
-  // Use DOMException when available (Node 17+), fall back to Error.
   try {
     return new DOMException(message, name);
   } catch (_) {
     var e = new Error(message);
     e.name = name;
-    e.code = name; // QuotaExceededError
+    e.code = name;
     return e;
+  }
+}
+
+function randomHex(bytes) {
+  return crypto.randomBytes(bytes).toString('hex');
+}
+
+// ---- lock directory protocol ------------------------------------------
+
+// lockPath returns the lock directory path derived from the storage file.
+function lockPath(filePath) {
+  return filePath + '.lock';
+}
+
+// ownerPath returns the owner.json path inside a lock directory.
+function ownerPath(lockDir) {
+  return path.join(lockDir, 'owner.json');
+}
+
+// tombstoneRoot returns the sibling tombstone directory for lockDir.
+function tombstoneRoot(lockDir) {
+  return path.join(path.dirname(lockDir), '.lock-tombstones');
+}
+
+// isProcessAlive reports whether a PID is likely alive.
+// On POSIX, kill(pid, 0) with ESRCH means dead.  On Windows, always
+// returns true — mtime-based fallback handles staleness there.
+function isProcessAlive(pid) {
+  if (os.platform() === 'win32') return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code !== 'ESRCH';
+  }
+}
+
+// isLockStale checks whether an existing lock directory can be safely
+// taken over.  dirMod is the lock directory mtime (ms since epoch).
+function isLockStale(lockDir, dirMod) {
+  var ownerFile = ownerPath(lockDir);
+  var now = Date.now();
+  try {
+    var data = fs.readFileSync(ownerFile, 'utf8');
+    var owner = JSON.parse(data);
+    if (owner.pid && !isProcessAlive(owner.pid)) {
+      return true;
+    }
+    var age = now - Math.min(dirMod, owner.processStart || dirMod);
+    return age > STALE_LOCK_MAX_AGE;
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      return now - dirMod > LOCK_GRACE;
+    }
+    return now - dirMod > LOCK_GRACE;
+  }
+}
+
+// tryTakeoverStaleLock attempts to atomically tombstone a stale lock.
+// Returns true if the lock was removed (by us or concurrently).
+function tryTakeoverStaleLock(lockDir) {
+  var root = tombstoneRoot(lockDir);
+  try {
+    fs.mkdirSync(path.join(root, 'stale'), { recursive: true });
+  } catch (_) {
+    // ignore
+  }
+  var tomb = path.join(root, 'stale', 'tomb-' + Date.now() + '-' + randomHex(4));
+  try {
+    fs.renameSync(lockDir, tomb);
+    cleanupTombstones(root);
+    return true;
+  } catch (e) {
+    if (e.code === 'ENOENT') return true;
+    return false;
+  }
+}
+
+function cleanupTombstones(root) {
+  try {
+    var staleDir = path.join(root, 'stale');
+    var entries = fs.readdirSync(staleDir);
+    for (var i = 0; i < entries.length; i++) {
+      try {
+        fs.rmSync(path.join(staleDir, entries[i]), { recursive: true, force: true });
+      } catch (_) { /* best-effort */ }
+    }
+  } catch (_) { /* best-effort */ }
+}
+
+// acquireLock attempts to create lockDir exclusively via mkdir.
+// Returns a release function on success, null if lock is held.
+function acquireLock(lockDir) {
+  try {
+    fs.mkdirSync(lockDir, 0o755);
+    var owner = JSON.stringify({
+      lockId: randomHex(8),
+      pid: process.pid,
+      processStart: Date.now(),
+    });
+    fs.writeFileSync(ownerPath(lockDir), owner, { mode: 0o644 });
+    return function release() {
+      releaseLock(lockDir);
+    };
+  } catch (e) {
+    if (e.code === 'EEXIST') return null;
+    throw e;
+  }
+}
+
+// releaseLock removes lockDir. Best-effort, never throws.
+function releaseLock(lockDir) {
+  try {
+    fs.rmSync(lockDir, { recursive: true, force: true });
+  } catch (_) { /* best-effort */ }
+}
+
+// acquireStorageLock blocks until the lock is acquired or timeout.
+// Returns a release function.  Throws on timeout.
+function acquireStorageLock(filePath) {
+  var lDir = lockPath(filePath);
+  var parent = path.dirname(lDir);
+
+  try { fs.mkdirSync(parent, { recursive: true }); } catch (_) { /* ignore */ }
+
+  // Clean abandoned temp files before acquiring (best-effort).
+  cleanupTempFiles(parent);
+
+  var deadline = Date.now() + LOCK_MAX_WAIT;
+  while (true) {
+    var release = acquireLock(lDir);
+    if (release) return release;
+
+    var stat;
+    try { stat = fs.statSync(lDir); } catch (e) { continue; }
+
+    if (isLockStale(lDir, stat.mtimeMs)) {
+      tryTakeoverStaleLock(lDir);
+      continue;
+    }
+
+    if (Date.now() >= deadline) {
+      throw new Error(
+        'Failed to acquire localStorage lock: timeout after ' +
+        (LOCK_MAX_WAIT / 1000) + 's'
+      );
+    }
+
+    // Spin for retry interval.
+    var end = Date.now() + LOCK_RETRY;
+    while (Date.now() < end) { /* spin */ }
+  }
+}
+
+// ---- temp file cleanup -------------------------------------------------
+
+var tempFilePattern = /\.tmp\.\d+\.\d+\.[a-z0-9]+$/;
+
+function cleanupTempFiles(dir) {
+  var entries;
+  try { entries = fs.readdirSync(dir); } catch (_) { return; }
+  var now = Date.now();
+  for (var i = 0; i < entries.length; i++) {
+    if (!tempFilePattern.test(entries[i])) continue;
+    var fullPath = path.join(dir, entries[i]);
+    try {
+      var st = fs.statSync(fullPath);
+      if (now - st.mtimeMs > TEMP_CLEANUP_AGE) {
+        fs.unlinkSync(fullPath);
+      }
+    } catch (_) { /* best-effort */ }
   }
 }
 
 // ---- persistence -------------------------------------------------------
 
 // loadStore reads and validates the on-disk JSON store.
-// Returns {items, order} or null (missing / empty / corrupt).
+// Returns {items, order, mtimeMs} or null (missing / empty / corrupt).
 function loadStore(filePath) {
-  var raw;
+  var raw, stat;
   try {
     raw = fs.readFileSync(filePath, 'utf8');
+    stat = fs.statSync(filePath);
   } catch (e) {
     if (e.code === 'ENOENT') return null;
     throw e;
@@ -74,7 +255,6 @@ function loadStore(filePath) {
     return null;
   }
   if (data.schemaVersion !== SCHEMA_VERSION) {
-    // Unknown schema version — reset rather than misinterpreting.
     console.warn(
       'mew: localStorage schema version ' + data.schemaVersion +
       ' unsupported (expected ' + SCHEMA_VERSION + '), resetting.'
@@ -99,15 +279,9 @@ function loadStore(filePath) {
       console.warn('mew: localStorage file corrupt (non-string key in order), resetting.');
       return null;
     }
-    if (!(k in data.items)) {
-      // Order references a missing key — skip it (graceful).
-      continue;
-    }
-    if (typeof data.items[k] !== 'string') {
-      // Value is not a string — skip the key (graceful).
-      continue;
-    }
-    if (seen[k]) continue; // duplicate in order — skip
+    if (!(k in data.items)) continue;
+    if (typeof data.items[k] !== 'string') continue;
+    if (seen[k]) continue;
     seen[k] = true;
     order.push(k);
   }
@@ -122,11 +296,21 @@ function loadStore(filePath) {
     }
   }
 
-  return { items: items, order: order };
+  return { items: items, order: order, mtimeMs: stat.mtimeMs };
 }
 
-// saveStore writes the store atomically.
-// Sequence: write to unique temp → fsync → rename.
+// computeTotalSize returns the sum of all value string lengths.
+function computeTotalSize(items, order) {
+  var s = 0;
+  for (var i = 0; i < order.length; i++) {
+    var k = order[i];
+    if (k in items) s += items[k].length;
+  }
+  return s;
+}
+
+// saveStore writes the store atomically (temp + fsync + rename).
+// Must be called while holding the storage lock.
 function saveStore(filePath, items, order) {
   var json = JSON.stringify({
     schemaVersion: SCHEMA_VERSION,
@@ -138,17 +322,14 @@ function saveStore(filePath, items, order) {
   try {
     fs.mkdirSync(dir, { recursive: true });
   } catch (_) {
-    // Directory already exists in race — ignore.
+    // Directory already exists — ignore.
   }
 
-  // Unique temp name to avoid collisions with concurrent writers.
-  // pid + timestamp + random suffix.
   var tmpName = filePath + '.tmp.' + process.pid + '.' + Date.now() + '.' +
     Math.random().toString(36).slice(2, 8);
   try {
     fs.writeFileSync(tmpName, json, { flag: 'wx' });
   } catch (e) {
-    // If exclusive-write fails (race), try once more with a new name.
     if (e.code === 'EEXIST') {
       tmpName = filePath + '.tmp.' + process.pid + '.' + Date.now() + '.' +
         Math.random().toString(36).slice(2, 8);
@@ -166,11 +347,9 @@ function saveStore(filePath, items, order) {
     if (fd !== undefined) fs.closeSync(fd);
   }
 
-  // Atomic rename on same filesystem.
   try {
     fs.renameSync(tmpName, filePath);
   } catch (e) {
-    // Clean up temp on failure.
     try { fs.unlinkSync(tmpName); } catch (_) { /* best-effort */ }
     throw e;
   }
@@ -183,30 +362,76 @@ function createLocalStorage(opts) {
   var filePath = opts.filePath || null;
   var quota = opts.quota || quotaFromEnv();
 
-  // Mutable state — populated on first access.
+  // Mutable state — loaded on first access, reloaded on external changes.
   var items = Object.create(null);
   var order = [];
   var totalSize = 0;
   var loaded = false;
+  var storeMtimeMs = 0;
 
-  function ensureLoaded() {
-    if (loaded) return;
-    if (filePath) {
-      var stored = loadStore(filePath);
-      if (stored) {
-        items = stored.items;
-        order = stored.order;
-        for (var i = 0; i < order.length; i++) {
-          totalSize += items[order[i]].length;
-        }
-      }
+  function reloadFromDisk() {
+    if (!filePath) return;
+    var stored = loadStore(filePath);
+    if (stored) {
+      items = stored.items;
+      order = stored.order;
+      totalSize = computeTotalSize(items, order);
+      storeMtimeMs = stored.mtimeMs;
+    } else {
+      items = Object.create(null);
+      order = [];
+      totalSize = 0;
+      storeMtimeMs = 0;
     }
     loaded = true;
   }
 
-  function flush() {
+  // ensureFresh reloads from disk if the store file has been modified
+  // externally (another process wrote it) or if never loaded.
+  function ensureFresh() {
+    if (!filePath) {
+      if (!loaded) {
+        items = Object.create(null);
+        order = [];
+        totalSize = 0;
+        loaded = true;
+      }
+      return;
+    }
+    if (loaded) {
+      try {
+        var stat = fs.statSync(filePath);
+        if (stat.mtimeMs === storeMtimeMs) return;
+      } catch (e) {
+        if (e.code === 'ENOENT') {
+          items = Object.create(null);
+          order = [];
+          totalSize = 0;
+          storeMtimeMs = 0;
+          return;
+        }
+        return;
+      }
+    }
+    reloadFromDisk();
+  }
+
+  // reloadLatestLocked reloads from disk unconditionally.
+  // Called while holding the storage lock.
+  function reloadLatestLocked() {
     if (!filePath) return;
-    saveStore(filePath, items, order);
+    var stored = loadStore(filePath);
+    if (stored) {
+      items = stored.items;
+      order = stored.order;
+      totalSize = computeTotalSize(items, order);
+      storeMtimeMs = stored.mtimeMs;
+    } else {
+      items = Object.create(null);
+      order = [];
+      totalSize = 0;
+      storeMtimeMs = 0;
+    }
   }
 
   function checkQuota(newBytes) {
@@ -219,65 +444,125 @@ function createLocalStorage(opts) {
     }
   }
 
-  function computeNewSize(key, newValue) {
-    var s = totalSize;
-    if (key in items) {
-      s -= items[key].length;
+  function computeNewSize(key, newValue, curSize, curItems) {
+    var s = curSize;
+    if (key in curItems) {
+      s -= curItems[key].length;
     }
     return s + newValue.length;
   }
 
+  // writeLocked persists the current in-memory state atomically.
+  // Must be called while holding the storage lock.
+  function writeLocked() {
+    if (!filePath) return;
+    saveStore(filePath, items, order);
+    try { storeMtimeMs = fs.statSync(filePath).mtimeMs; } catch (_) { /* ignore */ }
+  }
+
   return {
     getItem: function (key) {
-      ensureLoaded();
+      ensureFresh();
       var k = String(key);
       if (!(k in items)) return null;
       return items[k];
     },
 
     setItem: function (key, value) {
-      ensureLoaded();
       var k = String(key);
       var v = String(value);
-      var newSize = computeNewSize(k, v);
-      checkQuota(newSize);
 
-      if (!(k in items)) {
-        order.push(k);
+      if (filePath) {
+        var release = acquireStorageLock(filePath);
+        try {
+          reloadLatestLocked();
+          var newSize = computeNewSize(k, v, totalSize, items);
+          checkQuota(newSize);
+          if (!(k in items)) {
+            order.push(k);
+          }
+          items[k] = v;
+          totalSize = newSize;
+          writeLocked();
+        } finally {
+          release();
+        }
+      } else {
+        if (!loaded) {
+          items = Object.create(null);
+          order = [];
+          totalSize = 0;
+          loaded = true;
+        }
+        var memSize = computeNewSize(k, v, totalSize, items);
+        checkQuota(memSize);
+        if (!(k in items)) {
+          order.push(k);
+        }
+        items[k] = v;
+        totalSize = memSize;
       }
-      items[k] = v;
-      totalSize = newSize;
-      flush();
     },
 
     removeItem: function (key) {
-      ensureLoaded();
       var k = String(key);
-      if (!(k in items)) return;
 
-      totalSize -= items[k].length;
-      delete items[k];
-      var idx = order.indexOf(k);
-      if (idx !== -1) order.splice(idx, 1);
-      flush();
+      if (filePath) {
+        var release = acquireStorageLock(filePath);
+        try {
+          reloadLatestLocked();
+          if (!(k in items)) return;
+          totalSize -= items[k].length;
+          delete items[k];
+          var idx = order.indexOf(k);
+          if (idx !== -1) order.splice(idx, 1);
+          writeLocked();
+        } finally {
+          release();
+        }
+      } else {
+        if (!loaded) {
+          items = Object.create(null);
+          order = [];
+          totalSize = 0;
+          loaded = true;
+        }
+        if (!(k in items)) return;
+        totalSize -= items[k].length;
+        delete items[k];
+        var ix = order.indexOf(k);
+        if (ix !== -1) order.splice(ix, 1);
+      }
     },
 
     clear: function () {
-      ensureLoaded();
-      items = Object.create(null);
-      order = [];
-      totalSize = 0;
-      flush();
+      if (filePath) {
+        var release = acquireStorageLock(filePath);
+        try {
+          reloadLatestLocked();
+          items = Object.create(null);
+          order = [];
+          totalSize = 0;
+          writeLocked();
+        } finally {
+          release();
+        }
+      } else {
+        items = Object.create(null);
+        order = [];
+        totalSize = 0;
+        loaded = true;
+      }
     },
 
     key: function (index) {
-      ensureLoaded();
+      ensureFresh();
       if (index < 0 || index >= order.length) return null;
       return order[index];
     },
 
     get length() {
-      ensureLoaded();
+      ensureFresh();
       return order.length;
     },
   };
