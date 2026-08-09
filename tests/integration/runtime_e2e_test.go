@@ -2242,6 +2242,74 @@ func TestRuntimeE2ENoCredsInChildProcessUnrelated(t *testing.T) {
 	}
 }
 
+// --- Issue 3: child_process overload preservation ---
+
+// TestRuntimeE2EChildSpawnOverloads verifies that spawn preserves all
+// Node overloads: spawn(cmd), spawn(cmd, args), spawn(cmd, options),
+// spawn(cmd, args, options). Node children must still get Mew bootstrap
+// augmentation; non-Node children must pass through untouched.
+func TestRuntimeE2EChildSpawnOverloads(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "child-spawn-overloads.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "FAIL ") {
+			t.Errorf("%s", line)
+		}
+	}
+	if strings.Contains(out, "failed=0") {
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "failed=") {
+			if line != "failed=0" {
+				t.Errorf("spawn overload tests: %s", line)
+			}
+		}
+	}
+}
+
+// TestRuntimeE2EChildExecFileOverloads verifies that execFile preserves all
+// Node overloads including callback forms: execFile(file, callback),
+// execFile(file, options, callback), execFile(file, args, callback), and
+// no-callback forms. Node children must still get augmentation.
+func TestRuntimeE2EChildExecFileOverloads(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "child-execfile-overloads.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "FAIL ") {
+			t.Errorf("%s", line)
+		}
+	}
+	if strings.Contains(out, "failed=0") {
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "failed=") {
+			if line != "failed=0" {
+				t.Errorf("execFile overload tests: %s", line)
+			}
+		}
+	}
+}
+
 // TestRuntimeE2EWorkerPreservesUserExecArgv verifies that when a worker
 // specifies execArgv, the user's flags are preserved. Workers that override
 // execArgv opt out of Mew augmentation (credential-grabber may not run).

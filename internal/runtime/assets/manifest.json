@@ -7,8 +7,8 @@
       "path": "credential-grabber.cjs",
       "role": "credential-grabber",
       "moduleType": "cjs",
-      "size": 27922,
-      "sha256": "b9e37e38cd321989fe7d5f9a00d9c6fcbd77b3058371e0c65fc7c271f8b791f7"
+      "size": 30674,
+      "sha256": "acb45e0061fbd0d65780e5be546bd43c3401dccaa1b7bc59ca84ea4ca9fe3e2e"
     },
     {
       "name": "loader-register.mjs",

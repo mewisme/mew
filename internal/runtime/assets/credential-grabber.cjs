@@ -271,6 +271,64 @@ if (isMainThread) {
         return e;
       }
 
+      // ── Shared overload normalization helpers ───────────────────────
+      // Normalize child_process API overloads before Mew augmentation.
+      // _mewNormalizeSpawnArgs handles spawn(cmd[, args][, options]).
+      function _mewNormalizeSpawnArgs(rawArgs, rawOptions) {
+        if (rawArgs != null && !Array.isArray(rawArgs)) {
+          // spawn(cmd, options) — second argument is the options object.
+          return { args: [], options: rawArgs };
+        }
+        return { args: rawArgs || [], options: rawOptions || {} };
+      }
+
+      // _mewNormalizeExecFileArgs handles
+      // execFile(file[, args][, options][, callback]).
+      function _mewNormalizeExecFileArgs(rawArgs, rawOptions, rawCallback) {
+        var arr = [];
+        var opts = {};
+        var cb = undefined;
+
+        // Extract callback: check each position from right to left.
+        if (typeof rawCallback === 'function') {
+          cb = rawCallback;
+        } else if (typeof rawOptions === 'function') {
+          cb = rawOptions;
+          rawOptions = undefined;
+        } else if (typeof rawArgs === 'function') {
+          cb = rawArgs;
+          rawArgs = undefined;
+        }
+
+        // Sort remaining positional arguments into args array and options object.
+        if (rawArgs != null) {
+          if (Array.isArray(rawArgs)) {
+            arr = rawArgs;
+            if (rawOptions != null) opts = rawOptions;
+          } else {
+            // rawArgs is an object — treat as options (no args array).
+            opts = rawArgs;
+          }
+        } else if (rawOptions != null) {
+          opts = rawOptions;
+        }
+
+        return { args: arr, options: opts, callback: cb };
+      }
+
+      // _mewCloneOptions shallow-copies an options object. Returns a new
+      // empty object when src is null/undefined.
+      function _mewCloneOptions(src) {
+        var dst = {};
+        if (src != null) {
+          var keys = Object.keys(src);
+          for (var i = 0; i < keys.length; i++) {
+            dst[keys[i]] = src[keys[i]];
+          }
+        }
+        return dst;
+      }
+
       // ── Worker constructor augmentation (Issue 19) ─────────────────
       // Inject Mew runtime support into worker threads via execArgv + env,
       // matching the child_process propagation model. credential-grabber
@@ -363,9 +421,11 @@ if (isMainThread) {
             for (var i = 0; i < execArgv.length; i++) augmented.push(execArgv[i]);
             execArgv = augmented;
           }
-          options.execArgv = execArgv;
-          options.env = _mewAugmentEnv(options.env);
-          return OrigFork.call(this, modulePath, args, options);
+          // Clone to avoid mutating caller's options object.
+          var forkOpts = _mewCloneOptions(options);
+          forkOpts.execArgv = execArgv;
+          forkOpts.env = _mewAugmentEnv(options.env);
+          return OrigFork.call(this, modulePath, args, forkOpts);
         };
         cp.fork.prototype = OrigFork.prototype;
         cp.fork.__mewPatched = true;
@@ -376,8 +436,11 @@ if (isMainThread) {
       var OrigSpawn = cp.spawn;
       if (!OrigSpawn.__mewPatched) {
         cp.spawn = function MewSpawn(cmd, args, options) {
-          if (!args) args = [];
-          if (!options) options = {};
+          // Normalize overloads: spawn(cmd[, args][, options]).
+          var norm = _mewNormalizeSpawnArgs(args, options);
+          args = norm.args;
+          options = norm.options;
+
           var isNode = _mewIsCurrentNode(cmd);
           if (isNode && !_mewHasCredGrabber(args)) {
             var augmented = [];
@@ -389,6 +452,7 @@ if (isMainThread) {
             args = augmented;
           }
           if (isNode) {
+            options = _mewCloneOptions(options);
             options.env = _mewAugmentEnv(options.env);
           } else if (options.env) {
             // Non-Node child with explicit env: strip any MEW_TRANSFORM_*
@@ -403,6 +467,7 @@ if (isMainThread) {
               }
               cleanEnv[ck] = options.env[ck];
             }
+            options = _mewCloneOptions(options);
             options.env = cleanEnv;
           }
           return OrigSpawn.call(this, cmd, args, options);
@@ -416,8 +481,12 @@ if (isMainThread) {
       var OrigExecFile = cp.execFile;
       if (!OrigExecFile.__mewPatched) {
         cp.execFile = function MewExecFile(file, args, options, callback) {
-          if (!args) args = [];
-          if (!options) options = {};
+          // Normalize overloads: execFile(file[, args][, options][, callback]).
+          var norm = _mewNormalizeExecFileArgs(args, options, callback);
+          args = norm.args;
+          options = norm.options;
+          callback = norm.callback;
+
           var isNode = _mewIsCurrentNode(file);
           if (isNode && !_mewHasCredGrabber(args)) {
             var augmented = [];
@@ -429,6 +498,7 @@ if (isMainThread) {
             args = augmented;
           }
           if (isNode) {
+            options = _mewCloneOptions(options);
             options.env = _mewAugmentEnv(options.env);
           } else if (options.env) {
             var cleanEnv = {};
@@ -441,6 +511,7 @@ if (isMainThread) {
               }
               cleanEnv[ck] = options.env[ck];
             }
+            options = _mewCloneOptions(options);
             options.env = cleanEnv;
           }
           if (callback !== undefined) {
