@@ -263,7 +263,11 @@ func BuildArgv(plan *LaunchPlan, v8Args []string) []string {
 	// each user loader via module.register(). No credential handling, no
 	// ts-loader — just the user's loaders on stock Node.
 	if plan.LoaderShimPath != "" {
-		argv = append(argv, "--import", plan.LoaderShimPath)
+		shimPath := plan.LoaderShimPath
+		if runtime.GOOS == "windows" && filepath.IsAbs(shimPath) {
+			shimPath = fileURL(shimPath)
+		}
+		argv = append(argv, "--import", shimPath)
 	}
 
 	if !plan.ZeroAugmentation {
@@ -294,15 +298,21 @@ func BuildArgv(plan *LaunchPlan, v8Args []string) []string {
 	return argv
 }
 
-// fileURL converts an absolute Windows path to a file:// URL.
+// fileURL converts an absolute native path to a canonical file:// URL.
+// On Windows drive-letter paths (C:\...), filepath.ToSlash produces "C:/..."
+// which url.URL would emit as file://C:/... — missing the third slash that
+// marks an absolute local path. Prepend "/" so the result is file:///C:/...
+// Drive-letter-free absolute paths start with "/" already and are unchanged.
 func fileURL(p string) string {
-	// Use url.URL for standards-compliant file:// URL construction.
-	// Handles drive letters, spaces, Unicode, and special chars correctly.
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		abs = p
 	}
-	u := &url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}
+	slash := filepath.ToSlash(abs)
+	if !strings.HasPrefix(slash, "/") {
+		slash = "/" + slash
+	}
+	u := &url.URL{Scheme: "file", Path: slash}
 	return u.String()
 }
 

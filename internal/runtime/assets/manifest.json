@@ -23,8 +23,8 @@
       "path": "preload.cjs",
       "role": "preload-cjs",
       "moduleType": "cjs",
-      "size": 1323,
-      "sha256": "f6c252edea75c2f1ac6ae54b1923c8466720fe7ca6a54e7821e3c0442641f7bf"
+      "size": 1528,
+      "sha256": "2712dfa070f81474ed07d054e8c9b1a5d89a8966227cdea8995b3dff09892586"
     },
     {
       "name": "preload.mjs",
@@ -63,8 +63,8 @@
       "path": "web-storage.cjs",
       "role": "loader-support",
       "moduleType": "cjs",
-      "size": 16577,
-      "sha256": "35afb900c303d105ad005ef02ffe58b7f9f8b5967bb4a30bb4be1439d8031500"
+      "size": 18482,
+      "sha256": "132cd8b46293a2068c4262f3916cb91b60fe554964bb1db0d8ca022dff072938"
     }
   ]
 }

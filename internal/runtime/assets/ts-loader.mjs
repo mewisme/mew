@@ -3,7 +3,7 @@
 import { connect } from 'node:net';
 import { createHash } from 'node:crypto';
 import { accessSync, readFileSync, appendFileSync } from 'node:fs';
-import { resolve as pathResolve, parse as pathParse, join as pathJoin, dirname } from 'node:path';
+import { resolve as pathResolve, parse as pathParse, join as pathJoin, dirname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 
@@ -38,9 +38,9 @@ function traceResolved(absPath) {
   if (!depTraceFile || !absPath) return;
   if (reportedDeps.has(absPath)) return;
   // Skip node_modules and paths outside the project root.
-  if (absPath.split(pathSep).includes('node_modules')) return;
+  if (absPath.split(sep).includes('node_modules')) return;
   if (depTraceRoot && absPath !== depTraceRoot &&
-      !absPath.startsWith(depTraceRoot + pathSep)) return;
+      !absPath.startsWith(depTraceRoot + sep)) return;
   reportedDeps.add(absPath);
   try { appendFileSync(depTraceFile, absPath + '\n'); } catch (_) {}
 }
@@ -820,7 +820,7 @@ export async function load(url, context, nextLoad) {
   if (context.format !== 'module' && context.format !== 'commonjs') {
     return nextLoad(url, context);
   }
-  const pathname = decodeURIComponent(new URL(url).pathname);
+  const pathname = fileURLToPath(url);
   if (!pathname.endsWith('.ts') && !pathname.endsWith('.tsx') && !pathname.endsWith('.mts') && !pathname.endsWith('.cts')) {
     return nextLoad(url, context);
   }

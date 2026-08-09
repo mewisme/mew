@@ -61,6 +61,22 @@ function randomHex(bytes) {
   return crypto.randomBytes(bytes).toString('hex');
 }
 
+// sleepSync blocks the current thread for at least ms milliseconds.
+// Uses Atomics.wait (true OS-level block) when available; falls back to
+// a spin loop on older Node versions where Atomics.wait is disallowed on
+// the main thread.
+function sleepSync(ms) {
+  try {
+    var sab = new SharedArrayBuffer(4);
+    var view = new Int32Array(sab);
+    Atomics.wait(view, 0, 0, ms);
+  } catch (_) {
+    // Atomics.wait not available on main thread — fall back to spin.
+    var end = Date.now() + ms;
+    while (Date.now() < end) { /* spin */ }
+  }
+}
+
 // ---- lock directory protocol ------------------------------------------
 
 // lockPath returns the lock directory path derived from the storage file.
@@ -146,17 +162,21 @@ function cleanupTombstones(root) {
 
 // acquireLock attempts to create lockDir exclusively via mkdir.
 // Returns a release function on success, null if lock is held.
+// The release closure captures the unique lockId so it can verify
+// ownership before deleting the lock directory — a stale owner whose
+// lock was taken over must not delete the successor's lock.
 function acquireLock(lockDir) {
   try {
     fs.mkdirSync(lockDir, 0o755);
+    var lockId = randomHex(8);
     var owner = JSON.stringify({
-      lockId: randomHex(8),
+      lockId: lockId,
       pid: process.pid,
       processStart: Date.now(),
     });
     fs.writeFileSync(ownerPath(lockDir), owner, { mode: 0o644 });
     return function release() {
-      releaseLock(lockDir);
+      releaseLock(lockDir, lockId);
     };
   } catch (e) {
     if (e.code === 'EEXIST') return null;
@@ -164,8 +184,26 @@ function acquireLock(lockDir) {
   }
 }
 
-// releaseLock removes lockDir. Best-effort, never throws.
-function releaseLock(lockDir) {
+// releaseLock removes lockDir only if it still belongs to lockId.
+// Best-effort, never throws.  If the lock was taken over by another
+// owner (stale takeover), the canonical lock directory belongs to the
+// successor and must not be deleted.
+function releaseLock(lockDir, lockId) {
+  try {
+    var data = fs.readFileSync(ownerPath(lockDir), 'utf8');
+    var current = JSON.parse(data);
+    if (current.lockId !== lockId) {
+      // Lock was taken over — the successor owns the canonical directory.
+      return;
+    }
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      // Lock directory already gone (tombstoned by a stale takeover).
+      return;
+    }
+    // Can't verify ownership — fail closed.
+    return;
+  }
   try {
     fs.rmSync(lockDir, { recursive: true, force: true });
   } catch (_) { /* best-effort */ }
@@ -202,9 +240,8 @@ function acquireStorageLock(filePath) {
       );
     }
 
-    // Spin for retry interval.
-    var end = Date.now() + LOCK_RETRY;
-    while (Date.now() < end) { /* spin */ }
+    // Wait for retry interval with blocking sleep (no CPU spin).
+    sleepSync(LOCK_RETRY);
   }
 }
 
@@ -590,4 +627,23 @@ function createSessionStorage() {
 
 // ---- exports -----------------------------------------------------------
 
-module.exports = { createLocalStorage: createLocalStorage, createSessionStorage: createSessionStorage };
+// __lockTest exposes internal lock functions for deterministic testing.
+// Only populated when MEW_STORAGE_TEST_HOOKS=1 is set in the environment.
+// Never use in production paths.
+var __lockTest = undefined;
+if (process.env.MEW_STORAGE_TEST_HOOKS === '1') {
+  __lockTest = {
+    acquireLock: acquireLock,
+    releaseLock: releaseLock,
+    tryTakeoverStaleLock: tryTakeoverStaleLock,
+    isLockStale: isLockStale,
+    lockPath: lockPath,
+    tombstoneRoot: tombstoneRoot,
+  };
+}
+
+module.exports = {
+  createLocalStorage: createLocalStorage,
+  createSessionStorage: createSessionStorage,
+  __lockTest: __lockTest,
+};

@@ -709,3 +709,20 @@ func TestRuntimeStorageConcurrentQuotaContention(t *testing.T) {
 	}
 	t.Logf("quota contention: a-exists=%v b-exists=%v", aExists, bExists)
 }
+
+// --- Ownership race regression (Issue 4) ---
+
+func TestRuntimeStorageOwnershipRace(t *testing.T) {
+	skipWithoutNode(t)
+	proj := storageFixture(t)
+
+	t.Setenv("MEW_STORAGE_TEST_HOOKS", "1")
+	code, combined := runMWithRuntime(t, proj, "storage-ownership-race.js")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, combined)
+	}
+	out := storageOutput(t, proj)
+	if out != "OWNERSHIP_OK" {
+		t.Errorf("ownership race failures:\n%s", out)
+	}
+}

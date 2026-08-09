@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/mewisme/mew/internal/diagnostics"
 )
 
@@ -38,33 +39,33 @@ func RenderCompletionSummary(s CompletionSummary, settings EffectiveSettings) st
 	if name == "" {
 		name = "command"
 	}
-	sym := settings.Symbols
-	status := StatusSuccess
+
+	prefix := settings.Symbols.Success
 	verb := "completed"
-	prefix := sym.Success
+	prefixColor := color.New(color.FgGreen)
+
 	if s.Cancelled {
-		status = StatusWarning
+		prefix = settings.Symbols.Warning
 		verb = "cancelled"
-		prefix = sym.Warning
+		prefixColor = color.New(color.FgYellow)
 	} else if s.Failed || s.ExitCode != 0 {
-		status = StatusError
+		prefix = settings.Symbols.Error
 		verb = "failed"
-		prefix = sym.Error
+		prefixColor = color.New(color.FgRed)
 	}
-	_ = status
-	var b strings.Builder
-	if prefix != "" {
-		b.WriteString(prefix)
-		b.WriteByte(' ')
-	}
-	b.WriteString(name)
-	b.WriteByte(' ')
-	b.WriteString(verb)
+
+	duration := ""
 	if s.Duration > 0 {
-		b.WriteString(" in ")
-		b.WriteString(FormatDuration(s.Duration))
+		duration = " in " + FormatDuration(s.Duration)
 	}
-	return b.String()
+
+	return fmt.Sprintf(
+		"%s %s %s%s",
+		prefixColor.Sprint(prefix),
+		name,
+		verb,
+		duration,
+	)
 }
 
 // WriteCompletionSummary writes the summary to stderr, inserting a leading newline

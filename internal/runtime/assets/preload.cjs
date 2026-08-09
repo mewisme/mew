@@ -12,7 +12,7 @@
 // localStorage: persisted per-project when MEW_LOCAL_STORAGE_PATH is set,
 //   in-memory-only otherwise.  sessionStorage: in-memory, per-realm.
 {
-  const { createLocalStorage, createSessionStorage } = require('./web-storage.cjs');
+  const { createLocalStorage, createSessionStorage, __lockTest } = require('./web-storage.cjs');
 
   // Only install if Node does not already provide a native implementation.
   // Node 22+ may ship Web Storage globals under experimental flags; Mew
@@ -25,5 +25,10 @@
   }
   if (typeof globalThis.sessionStorage === 'undefined') {
     globalThis.sessionStorage = createSessionStorage();
+  }
+
+  // Expose internal lock test hooks when requested (Issue 4 ownership tests).
+  if (__lockTest && process.env.MEW_STORAGE_TEST_HOOKS === '1') {
+    globalThis.__mewLockTest = __lockTest;
   }
 }
