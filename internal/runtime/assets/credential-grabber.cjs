@@ -20,11 +20,11 @@
 //
 // Issue 19 — Worker propagation:
 //   Main thread monkey-patches the Worker constructor to inject
-//   credentials into workerData via a Symbol key. When this module
-//   re-evaluates in a worker (isMainThread=false, parentPort exists),
-//   it extracts credentials from workerData and registers ts-loader
-//   for the worker. The loader-thread branch (no parentPort) is
-//   unchanged.
+//   credential-grabber into the worker's execArgv and credentials
+//   into the worker's env. When credential-grabber re-evaluates in
+//   a worker, it captures credentials from process.env, strips them,
+//   and registers ts-loader — identical to the parent flow.
+//   workerData is never mutated.
 //
 // Issue 39 — Child process propagation:
 //   Main thread also monkey-patches child_process (fork, spawn,
@@ -36,16 +36,14 @@
 //   not augmented.
 'use strict';
 
-const { isMainThread, parentPort, workerData } = require('node:worker_threads');
+const { isMainThread, parentPort } = require('node:worker_threads');
 
 // ── Credential storage (main-thread closure) ──────────────────────
-// Only populated on the main thread. Workers retrieve credentials
-// via workerData instead.
+// Populated on the main thread after env capture. Used by Worker and
+// child_process patches to propagate credentials to children.
+// Workers capture credentials from their own process.env (set by the
+// parent via the Worker env option) — no workerData transport.
 let _mewCredentials = null;
-
-// Symbol key for workerData injection. Symbol.for makes it
-// accessible across module re-evaluation in workers.
-const kMewCreds = Symbol.for('mew:transform-credentials');
 
 if (isMainThread) {
   // ── Main thread ────────────────────────────────────────────────
@@ -163,67 +161,9 @@ if (isMainThread) {
     }
   }
 
-  // ── Worker constructor augmentation (Issue 19) ─────────────────
-  // Inject Mew credentials into workerData so worker threads can
-  // register ts-loader for themselves. Uses a Symbol key to avoid
-  // colliding with user workerData and to prevent enumeration.
-  //
-  // Only active when transform credentials are present. If there
-  // are no credentials (e.g. JS-only entrypoint), workers still
-  // inherit preloads (Web Storage) but skip loader registration.
-  if (_mewCredentials) {
-    try {
-      const workerThreads = require('node:worker_threads');
-      const OriginalWorker = workerThreads.Worker;
-
-      // Guard against double-patching (e.g. credential-grabber
-      // somehow loaded twice in the same isolate).
-      if (!OriginalWorker.__mewPatched) {
-        workerThreads.Worker = function MewWorker(filename, options) {
-          if (!options) options = {};
-
-          // Preserve user workerData. Inject Mew credentials via
-          // a non-enumerable Symbol key so user code cannot
-          // trivially enumerate or read the raw credentials.
-          var wd = options.workerData;
-          if (wd !== undefined && typeof wd === 'object' && wd !== null) {
-            // User provided an object — attach creds via Symbol key.
-            wd[kMewCreds] = _mewCredentials;
-          } else if (wd === undefined) {
-            options.workerData = { [kMewCreds]: _mewCredentials };
-          } else {
-            // workerData is a primitive (unusual but valid Node API).
-            // Wrap it so we can still inject credentials.
-            options.workerData = {
-              [kMewCreds]: _mewCredentials,
-              // Hidden primitive wrapper; user code never sees this
-              // because workerData is replaced with our object.
-            };
-            // Preserve the primitive value as a hidden property.
-            Object.defineProperty(options.workerData, '_mew_userWorkerData', {
-              value: wd,
-              enumerable: false,
-              writable: true,
-            });
-          }
-
-          return new OriginalWorker(filename, options);
-        };
-
-        // Preserve prototype chain and static properties.
-        workerThreads.Worker.prototype = OriginalWorker.prototype;
-        workerThreads.Worker.__mewPatched = true;
-
-        // Mark the original so we can detect re-patching.
-        OriginalWorker.__mewPatched = true;
-      }
-    } catch (_) {
-      // worker_threads may be unavailable in some contexts.
-      // Worker propagation is best-effort; worker import of .ts
-      // files will fail with a clear Node error instead of silently
-      // bypassing the transform.
-    }
-  }
+  // Worker constructor augmentation moved below — runs after shared
+  // helpers (_mewHasCredGrabber, _mewAugmentEnv) are defined, and
+  // uses execArgv+env propagation instead of mutating workerData.
 
   // ── Child process augmentation (Issue 39) ────────────────────────
   // Inject Mew runtime support into child Node processes so they can
@@ -329,6 +269,73 @@ if (isMainThread) {
           e.MEW_TRANSFORM_DEP_TRACE_ROOT = _mewCredentials.depTraceRoot;
         }
         return e;
+      }
+
+      // ── Worker constructor augmentation (Issue 19) ─────────────────
+      // Inject Mew runtime support into worker threads via execArgv + env,
+      // matching the child_process propagation model. credential-grabber
+      // is injected as the first --require so the worker-side copy
+      // captures+strips MEW_TRANSFORM_* before user code executes.
+      // workerData is never mutated — user values pass through unchanged.
+      try {
+        var workerThreads = require('node:worker_threads');
+        var OrigWorker = workerThreads.Worker;
+
+        if (!OrigWorker.__mewPatched) {
+          workerThreads.Worker = function MewWorker(filename, options) {
+            if (!options) options = {};
+
+            // Augment execArgv: inject credential-grabber before user flags.
+            var wExecArgv = options.execArgv || process.execArgv;
+            if (!_mewHasCredGrabber(wExecArgv)) {
+              var wAug = [];
+              if (parentHasSourceMaps && wExecArgv.indexOf('--enable-source-maps') === -1) {
+                wAug.push('--enable-source-maps');
+              }
+              wAug.push('--require', credGrabberPath);
+              for (var wi = 0; wi < wExecArgv.length; wi++) wAug.push(wExecArgv[wi]);
+              wExecArgv = wAug;
+            }
+
+            // Build worker env: clone source, strip MEW_TRANSFORM_*, inject real creds.
+            var wSrcEnv = options.env || process.env;
+            var wEnv = {};
+            var wSrcKeys = Object.keys(wSrcEnv);
+            for (var wsi = 0; wsi < wSrcKeys.length; wsi++) {
+              var wsk = wSrcKeys[wsi];
+              if (wsk.length >= 15 && wsk.toUpperCase().indexOf('MEW_TRANSFORM_') === 0) continue;
+              wEnv[wsk] = wSrcEnv[wsk];
+            }
+            wEnv.MEW_TRANSFORM_ENDPOINT = _mewCredentials.endpoint;
+            wEnv.MEW_TRANSFORM_TOKEN = _mewCredentials.token;
+            wEnv.MEW_TRANSFORM_OPTIONS = _mewCredentials.options;
+            wEnv.MEW_TRANSFORM_OPTS_DIGEST = _mewCredentials.optsDigest;
+            wEnv.MEW_TRANSFORM_CONFIG_DIR = _mewCredentials.configDir;
+            if (_mewCredentials.depTraceFile) wEnv.MEW_TRANSFORM_DEP_TRACE_FILE = _mewCredentials.depTraceFile;
+            if (_mewCredentials.depTraceRoot) wEnv.MEW_TRANSFORM_DEP_TRACE_ROOT = _mewCredentials.depTraceRoot;
+
+            // Clone options to avoid mutating caller's object.
+            var wOpts = {};
+            var wOptKeys = Object.keys(options);
+            for (var woi = 0; woi < wOptKeys.length; woi++) {
+              wOpts[wOptKeys[woi]] = options[wOptKeys[woi]];
+            }
+            wOpts.execArgv = wExecArgv;
+            wOpts.env = wEnv;
+            // workerData passes through unchanged — never mutated.
+
+            return new OrigWorker(filename, wOpts);
+          };
+
+          workerThreads.Worker.prototype = OrigWorker.prototype;
+          workerThreads.Worker.__mewPatched = true;
+          OrigWorker.__mewPatched = true;
+        }
+      } catch (_) {
+        // worker_threads may be unavailable in some contexts.
+        // Worker propagation is best-effort; worker import of .ts
+        // files will fail with a clear Node error instead of silently
+        // bypassing the transform.
       }
 
       // ── fork ──────────────────────────────────────────────────────
@@ -458,27 +465,35 @@ if (isMainThread) {
 } else if (parentPort) {
   // ── Worker thread (Issue 19) ────────────────────────────────────
   // In a worker created from a Mew-augmented parent:
-  //   1. Extract credentials from workerData (injected by parent's
-  //      credential-grabber monkey-patch).
-  //   2. Register ts-loader for this worker's isolate.
-  //   3. Strip credentials from workerData.
-  //   4. Export nulls (credentials are in the loader's initialize hook).
+  //   1. Capture credentials from process.env (injected by parent's
+  //      credential-grabber via the Worker env option).
+  //   2. Strip from process.env before user code executes.
+  //   3. Register ts-loader for this worker's isolate.
+  //   4. Patch Worker for nested worker propagation.
+  //   5. Export nulls (credentials delivered via module.register() data).
   //
-  // If workerData lacks credentials (worker created without Mew
-  // augmentation, or user overrode execArgv), skip registration.
+  // Uses the same env-capture pattern as the main thread. Credentials
+  // are never transported through workerData.
 
-  var creds = null;
-  try {
-    if (workerData && typeof workerData === 'object') {
-      creds = workerData[kMewCreds] || null;
-      // Strip credentials from workerData so user code cannot read them.
-      delete workerData[kMewCreds];
-    }
-  } catch (_) {
-    // workerData might not be available; skip.
-  }
+  var endpoint = process.env.MEW_TRANSFORM_ENDPOINT || null;
+  var token = process.env.MEW_TRANSFORM_TOKEN || null;
+  var options = process.env.MEW_TRANSFORM_OPTIONS || '{}';
+  var optsDigest = process.env.MEW_TRANSFORM_OPTS_DIGEST || '';
+  var configDir = process.env.MEW_TRANSFORM_CONFIG_DIR || '';
+  var depTraceFile = process.env.MEW_TRANSFORM_DEP_TRACE_FILE || '';
+  var depTraceRoot = process.env.MEW_TRANSFORM_DEP_TRACE_ROOT || '';
 
-  if (creds && creds.endpoint && creds.token) {
+  // Strip immediately — before any user code executes.
+  delete process.env.MEW_TRANSFORM_ENDPOINT;
+  delete process.env.MEW_TRANSFORM_TOKEN;
+  delete process.env.MEW_TRANSFORM_OPTIONS;
+  delete process.env.MEW_TRANSFORM_OPTS_DIGEST;
+  delete process.env.MEW_TRANSFORM_CONFIG_DIR;
+  delete process.env.MEW_TRANSFORM_DEP_TRACE_FILE;
+  delete process.env.MEW_TRANSFORM_DEP_TRACE_ROOT;
+
+  if (endpoint && token) {
+    // Register the TypeScript loader with credentials via module.register().
     var register;
     try { register = require('node:module').register; } catch (_) {}
     if (register) {
@@ -488,22 +503,18 @@ if (isMainThread) {
         const tsLoader = pathToFileURL(path.join(__dirname, 'ts-loader.mjs')).href;
         const parentURL = pathToFileURL(__filename).href;
 
-        // In workers, MEW_USER_LOADERS from the parent process
-        // is already deleted. Workers don't inherit parent
-        // loaders; user loaders must be explicitly set up per
-        // worker via the worker's own env/options.
         delete process.env.MEW_USER_LOADERS;
 
         register(tsLoader, parentURL, {
-          parentURL,
+          parentURL: parentURL,
           data: {
-            endpoint: creds.endpoint,
-            token: creds.token,
-            options: creds.options || '{}',
-            optsDigest: creds.optsDigest || '',
-            configDir: creds.configDir || '',
-            depTraceFile: creds.depTraceFile || '',
-            depTraceRoot: creds.depTraceRoot || '',
+            endpoint: endpoint,
+            token: token,
+            options: options,
+            optsDigest: optsDigest,
+            configDir: configDir,
+            depTraceFile: depTraceFile,
+            depTraceRoot: depTraceRoot,
           },
           transferList: [],
         });
@@ -511,6 +522,76 @@ if (isMainThread) {
         // Registration failed — worker will get Node-native errors
         // for .ts imports (ERR_UNKNOWN_FILE_EXTENSION).
       }
+    }
+
+    // ── Patch Worker for nested workers ────────────────────────────
+    // Uses same execArgv+env propagation as the parent, so nested
+    // workers also receive TypeScript augmentation without credential
+    // leakage through workerData.
+    try {
+      var workerThreads = require('node:worker_threads');
+      var OrigWorker = workerThreads.Worker;
+
+      if (!OrigWorker.__mewPatched) {
+        function _wHasCredGrabber(args) {
+          if (!args) return false;
+          for (var i = 0; i < args.length; i++) {
+            if ((args[i] === '--require' || args[i] === '-r') && args[i + 1] === __filename) return true;
+          }
+          return false;
+        }
+
+        var _wParentHasSourceMaps = process.execArgv.indexOf('--enable-source-maps') !== -1;
+
+        workerThreads.Worker = function MewWorker(filename, wOptions) {
+          if (!wOptions) wOptions = {};
+
+          var wExecArgv = wOptions.execArgv || process.execArgv;
+          if (!_wHasCredGrabber(wExecArgv)) {
+            var wAug = [];
+            if (_wParentHasSourceMaps && wExecArgv.indexOf('--enable-source-maps') === -1) {
+              wAug.push('--enable-source-maps');
+            }
+            wAug.push('--require', __filename);
+            for (var wi = 0; wi < wExecArgv.length; wi++) wAug.push(wExecArgv[wi]);
+            wExecArgv = wAug;
+          }
+
+          // Build worker env from user env or inherited process.env.
+          var wSrcEnv = wOptions.env || process.env;
+          var wEnv = {};
+          var wSrcKeys = Object.keys(wSrcEnv);
+          for (var wsi = 0; wsi < wSrcKeys.length; wsi++) {
+            var wsk = wSrcKeys[wsi];
+            if (wsk.length >= 15 && wsk.toUpperCase().indexOf('MEW_TRANSFORM_') === 0) continue;
+            wEnv[wsk] = wSrcEnv[wsk];
+          }
+          wEnv.MEW_TRANSFORM_ENDPOINT = endpoint;
+          wEnv.MEW_TRANSFORM_TOKEN = token;
+          wEnv.MEW_TRANSFORM_OPTIONS = options;
+          wEnv.MEW_TRANSFORM_OPTS_DIGEST = optsDigest;
+          wEnv.MEW_TRANSFORM_CONFIG_DIR = configDir;
+          if (depTraceFile) wEnv.MEW_TRANSFORM_DEP_TRACE_FILE = depTraceFile;
+          if (depTraceRoot) wEnv.MEW_TRANSFORM_DEP_TRACE_ROOT = depTraceRoot;
+
+          var wOpts = {};
+          var wOptKeys = Object.keys(wOptions);
+          for (var woi = 0; woi < wOptKeys.length; woi++) {
+            wOpts[wOptKeys[woi]] = wOptions[wOptKeys[woi]];
+          }
+          wOpts.execArgv = wExecArgv;
+          wOpts.env = wEnv;
+          // workerData passes through unchanged.
+
+          return new OrigWorker(filename, wOpts);
+        };
+
+        workerThreads.Worker.prototype = OrigWorker.prototype;
+        workerThreads.Worker.__mewPatched = true;
+        OrigWorker.__mewPatched = true;
+      }
+    } catch (_) {
+      // worker_threads may be unavailable.
     }
   }
 

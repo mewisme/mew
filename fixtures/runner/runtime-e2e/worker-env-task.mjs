@@ -1,6 +1,6 @@
 // Worker task that checks effective environment propagation (Issue 19).
 // Reports whether MEW_TRANSFORM_* vars are present (should be absent — they
-// are stripped before user code, and workerData carries them instead).
+// are stripped by credential-grabber before user code executes).
 import { parentPort, workerData } from 'node:worker_threads';
 
 const results = [

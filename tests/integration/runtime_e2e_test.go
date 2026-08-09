@@ -2262,6 +2262,213 @@ func TestRuntimeE2EWorkerPreservesUserExecArgv(t *testing.T) {
 	}
 }
 
+// --- Issue 2: workerData preservation regression tests ---
+
+func TestRuntimeE2EWorkerDataUndefined(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-undefined.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"isUndefined":true`) {
+		t.Fatalf("workerData should be undefined; got: %s", out)
+	}
+	if strings.Contains(out, `"_mew_`) || strings.Contains(out, `"MEW_`) {
+		t.Fatalf("workerData contains Mew keys; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataNull(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-null.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"isNull":true`) {
+		t.Fatalf("workerData should be null; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataString(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-string.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"value":"hello-worker"`) {
+		t.Fatalf("workerData should be 'hello-worker'; got: %s", out)
+	}
+	if !strings.Contains(out, `"type":"string"`) {
+		t.Fatalf("workerData type should be string; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataNumber(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-number.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"value":"42"`) {
+		t.Fatalf("workerData should be 42; got: %s", out)
+	}
+	if !strings.Contains(out, `"type":"number"`) {
+		t.Fatalf("workerData type should be number; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataBoolean(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-boolean.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"value":"true"`) {
+		t.Fatalf("workerData should be true; got: %s", out)
+	}
+	if !strings.Contains(out, `"type":"boolean"`) {
+		t.Fatalf("workerData type should be boolean; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataArray(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-array.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"isArray":true`) {
+		t.Fatalf("workerData should be an array; got: %s", out)
+	}
+	if !strings.Contains(out, `"length":3`) {
+		t.Fatalf("workerData array length mismatch; got: %s", out)
+	}
+	if !strings.Contains(out, `two`) {
+		t.Fatalf("workerData array content missing 'two'; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataObject(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-object.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"name":"test"`) || !strings.Contains(out, `"count":99`) {
+		t.Fatalf("workerData object content mismatch; got: %s", out)
+	}
+	if strings.Contains(out, `"hasMewKeys":true`) {
+		t.Fatalf("workerData object has Mew-injected keys; got: %s", out)
+	}
+	if !strings.Contains(out, "parent-unmutated") {
+		t.Fatalf("parent-side workerData object was mutated; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataFrozen(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-frozen.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d (parent-side mutation of frozen object should not cause error)", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"name":"frozen"`) {
+		t.Fatalf("frozen workerData content not preserved; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataSealed(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-sealed.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d (parent-side mutation of sealed object should not cause error)", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"name":"sealed"`) {
+		t.Fatalf("sealed workerData content not preserved; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerDataNonExtensible(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-data-nonextensible.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d (parent-side mutation of non-extensible object should not cause error)", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"name":"nonext"`) {
+		t.Fatalf("non-extensible workerData content not preserved; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerExecArgvPreservation(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-execargv.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"hasCustomVM":true`) {
+		t.Fatalf("custom --experimental-vm-modules not in worker execArgv; got: %s", out)
+	}
+	if !strings.Contains(out, `"hasCustomNoWarnings":true`) {
+		t.Fatalf("custom --no-warnings not in worker execArgv; got: %s", out)
+	}
+	if !strings.Contains(out, `"hasMewRequire":true`) {
+		t.Fatalf("Mew credential-grabber not in worker execArgv; got: %s", out)
+	}
+	if !strings.Contains(out, `"customFlagsAfterMew":true`) {
+		t.Fatalf("user execArgv flags should appear after Mew bootstrap; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerCredentialScrubbing(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-scrub.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, `"envLeaked":"none"`) {
+		t.Fatalf("MEW_TRANSFORM_* leaked into worker env; got: %s", out)
+	}
+	if !strings.Contains(out, `"workerDataLeaked":"none"`) {
+		t.Fatalf("Mew keys leaked into workerData; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerNested(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	code, _ := runMWithRuntime(t, proj, "worker-nested.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, "libValue=resolved-lib-ts") {
+		t.Fatalf("nested worker failed to import TypeScript; got: %s", out)
+	}
+}
+
 // --- helpers ---
 
 func writeFile(t *testing.T, path, content string) {
