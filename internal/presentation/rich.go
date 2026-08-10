@@ -68,7 +68,7 @@ func (r *richRenderer) Notice(n Notice) string {
 }
 
 func (r *richRenderer) Hint(h Hint) string {
-	arrow := applyStyle(r.theme.Primary, r.settings.Symbols.Arrow, true)
+	arrow := applyStyle(r.theme.Arrow, r.settings.Symbols.Arrow, true)
 	return arrow + " " + h.Message
 }
 
@@ -125,12 +125,18 @@ func (r *richRenderer) Symbol(st Status) string {
 	switch st {
 	case StatusSuccess:
 		return applyStyle(r.theme.Success, sym, true)
-	case StatusWarning:
+	case StatusWarning, StatusCancelled:
 		return applyStyle(r.theme.Warning, sym, true)
 	case StatusError:
 		return applyStyle(r.theme.Error, sym, true)
 	case StatusInfo:
 		return applyStyle(r.theme.Info, sym, true)
+	case StatusRunning:
+		return applyStyle(r.theme.Running, sym, true)
+	case StatusPending:
+		return applyStyle(r.theme.Pending, sym, true)
+	case StatusSkipped:
+		return applyStyle(r.theme.Skipped, sym, true)
 	default:
 		return sym
 	}

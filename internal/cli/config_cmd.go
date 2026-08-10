@@ -228,7 +228,7 @@ func writeConfigSetResult(g *globalFlags, cmd *cobra.Command, mv configMutationV
 		return nil
 	}
 	r := g.mustStaticRenderer(cmd)
-	headline := fmt.Sprintf("%s Updated %s", r.Settings().Symbols.Success, mv.Key)
+	headline := fmt.Sprintf("%s Updated %s", r.Symbol(presentation.StatusSuccess), mv.Key)
 	prevDisplay := mv.PreviousDisplay
 	if !mv.PreviousSet {
 		prevDisplay = "(unset)"
@@ -326,7 +326,7 @@ func writeConfigUnsetResult(g *globalFlags, cmd *cobra.Command, mv configMutatio
 	}
 	r := g.mustStaticRenderer(cmd)
 	headline := fmt.Sprintf("%s Removed %s from %s configuration",
-		r.Settings().Symbols.Success, mv.Key, mv.Scope)
+		r.Symbol(presentation.StatusSuccess), mv.Key, mv.Scope)
 	kvs := make([]presentation.KeyValue, 0, 3)
 	if mv.CurrentDisplay != "" {
 		kvs = append(kvs, presentation.KeyValue{Key: "Effective", Value: mv.CurrentDisplay})
@@ -389,10 +389,7 @@ func writeConfigListHuman(g *globalFlags, cmd *cobra.Command, view configListVie
 	stacked := settings.Width < 60 || settings.Accessible
 	theme := presentation.NewTheme(settings.ThemeMode)
 	useColor := settings.UseColor
-	dot := settings.Symbols.Running
-	if useColor && theme.Primary != nil {
-		dot = theme.Primary.Sprint(dot)
-	}
+	dot := presentation.RenderSemanticSymbol(settings.Symbols, theme, presentation.StatusRunning, useColor)
 
 	var b strings.Builder
 	b.WriteString(configScopeLabel(view.Scope))
@@ -1037,7 +1034,8 @@ func writeConfigMigrationCheck(g *globalFlags, cmd *cobra.Command, plan config.M
 		return plan.ConflictError()
 	}
 	var b strings.Builder
-	b.WriteString("! Configuration uses deprecated keys\n\n")
+	r := g.mustStaticRenderer(cmd)
+	b.WriteString(r.Symbol(presentation.StatusWarning) + " Configuration uses deprecated keys\n\n")
 	for _, s := range plan.Steps {
 		fmt.Fprintf(&b, "  %s\n    Use %s\n\n", s.From, s.To)
 	}

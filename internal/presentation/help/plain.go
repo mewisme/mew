@@ -19,6 +19,8 @@ type RenderOptions struct {
 	ThemeMode presentation.ThemeMode
 	// UseColor enables semantic ANSI colors for rich TTY output.
 	UseColor bool
+	// Symbols provides the active glyph set (Unicode or ASCII).
+	Symbols presentation.Symbols
 }
 
 // Render selects plain or rich Markdown rendering.
@@ -91,7 +93,7 @@ func RenderPlain(md string, opts RenderOptions) string {
 		}
 		// Horizontal rule.
 		if trim == "---" || trim == "***" || trim == "___" || trim == "- - -" || trim == "* * *" {
-			out = append(out, "----")
+			out = append(out, strings.Repeat(opts.Symbols.Separator, 4))
 			continue
 		}
 		if strings.HasPrefix(trim, "|") && strings.Contains(trim, "|") {

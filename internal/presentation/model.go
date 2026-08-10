@@ -9,6 +9,10 @@ const (
 	StatusWarning
 	StatusError
 	StatusInfo
+	StatusPending
+	StatusRunning
+	StatusSkipped
+	StatusCancelled
 )
 
 // ValueKind selects value styling for key-value rows.

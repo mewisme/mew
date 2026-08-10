@@ -6,8 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/fatih/color"
-
 	"github.com/mewisme/mew/internal/diagnostics"
 )
 
@@ -61,7 +59,7 @@ func (p *StaticRichProgressRenderer) OperationStarted(ev diagnostics.OperationSt
 	p.active[ev.ID] = kind
 
 	var b strings.Builder
-	b.WriteString(p.colorSymbol(p.theme.Info, p.symbols.Running))
+	b.WriteString(RenderSemanticSymbol(p.symbols, p.theme, StatusRunning, p.settings.UseColor))
 	b.WriteString(" ")
 	b.WriteString(kind)
 	if ev.Total != nil && *ev.Total > 0 {
@@ -96,19 +94,24 @@ func (p *StaticRichProgressRenderer) OperationCompleted(ev diagnostics.Operation
 	}
 
 	var b strings.Builder
-	var symStyle *color.Color
-	var sym string
+	var st Status
 	switch status {
 	case "ok":
-		symStyle, sym = p.theme.Success, p.symbols.Success
+		st = StatusSuccess
 	case "skipped":
-		symStyle, sym = p.theme.Warning, p.symbols.Skipped
+		st = StatusSkipped
 	case "cancelled":
-		symStyle, sym = p.theme.Warning, p.symbols.Warning
+		st = StatusCancelled
+	case "added":
+		st = StatusSuccess // phase that added packages is success
+	case "updated":
+		st = StatusSuccess
+	case "removed":
+		st = StatusSuccess
 	default:
-		symStyle, sym = p.theme.Error, p.symbols.Error
+		st = StatusError
 	}
-	b.WriteString(p.colorSymbol(symStyle, sym))
+	b.WriteString(RenderSemanticSymbol(p.symbols, p.theme, st, p.settings.UseColor))
 	b.WriteString(" ")
 	b.WriteString(kind)
 
@@ -127,14 +130,6 @@ func (p *StaticRichProgressRenderer) OperationCompleted(ev diagnostics.Operation
 	})
 }
 
-// colorSymbol applies the color to the symbol when color is enabled.
-func (p *StaticRichProgressRenderer) colorSymbol(c *color.Color, sym string) string {
-	if !p.settings.UseColor {
-		return sym
-	}
-	return c.Sprint(sym)
-}
-
 func (p *StaticRichProgressRenderer) Notice(ev diagnostics.NoticeEvent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -145,10 +140,7 @@ func (p *StaticRichProgressRenderer) Notice(ev diagnostics.NoticeEvent) {
 	if msg == "" {
 		return
 	}
-	sym := p.symbols.Warning
-	if p.settings.UseColor {
-		sym = p.theme.Warning.Sprint(sym)
-	}
+	sym := RenderSemanticSymbol(p.symbols, p.theme, StatusWarning, p.settings.UseColor)
 	p.writeln(sym + " " + msg)
 }
 
@@ -228,10 +220,7 @@ func WriteStaticRichInstallSummary(w io.Writer, settings EffectiveSettings, adde
 		return
 	}
 	theme := NewTheme(settings.ThemeMode)
-	sym := settings.Symbols.Success
-	if settings.UseColor {
-		sym = theme.Success.Sprint(sym)
-	}
+	sym := RenderSemanticSymbol(settings.Symbols, theme, StatusSuccess, settings.UseColor)
 	var b strings.Builder
 	b.WriteString(sym)
 	b.WriteString(" ")

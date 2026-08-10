@@ -34,7 +34,7 @@ func newRunnerPresentation(settings EffectiveSettings, errW io.Writer, debug, su
 }
 
 func (r *RunnerPresentation) EnvironmentPrepared(ev diagnostics.EnvironmentPreparedEvent) {
-	view := MapEnvironmentPrepared(ev, r.lastCmd, r.debug)
+	view := MapEnvironmentPrepared(ev, r.lastCmd, r.debug, r.settings.Symbols.Ellipsis)
 	WriteExecutionPrep(r.errW, view, r.settings)
 }
 

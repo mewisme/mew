@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/mewisme/mew/internal/diagnostics"
 )
 
@@ -40,18 +39,16 @@ func RenderCompletionSummary(s CompletionSummary, settings EffectiveSettings) st
 		name = "command"
 	}
 
-	prefix := settings.Symbols.Success
+	theme := NewTheme(settings.ThemeMode)
+	st := StatusSuccess
 	verb := "completed"
-	prefixColor := color.New(color.FgGreen)
 
 	if s.Cancelled {
-		prefix = settings.Symbols.Warning
+		st = StatusCancelled
 		verb = "cancelled"
-		prefixColor = color.New(color.FgYellow)
 	} else if s.Failed || s.ExitCode != 0 {
-		prefix = settings.Symbols.Error
+		st = StatusError
 		verb = "failed"
-		prefixColor = color.New(color.FgRed)
 	}
 
 	duration := ""
@@ -59,10 +56,7 @@ func RenderCompletionSummary(s CompletionSummary, settings EffectiveSettings) st
 		duration = " in " + FormatDuration(s.Duration)
 	}
 
-	styledPrefix := prefix
-	if settings.UseColor {
-		styledPrefix = prefixColor.Sprint(prefix)
-	}
+	styledPrefix := RenderSemanticSymbol(settings.Symbols, theme, st, settings.UseColor)
 
 	return fmt.Sprintf(
 		"%s %s %s%s",

@@ -74,7 +74,7 @@ func formatLockDiffHuman(r presentation.StaticRenderer, diff *lockfile.GraphDiff
 		parts = append(parts, r.PackageDeltas(deltas))
 	}
 	for _, sp := range diff.Specifiers {
-		parts = append(parts, r.PlainText(formatSpecifierDiff(sp)))
+		parts = append(parts, r.PlainText(formatSpecifierDiff(sp, r.Settings().Symbols)))
 	}
 	return strings.Join(parts, "\n")
 }
@@ -98,7 +98,7 @@ func splitLockPkgID(id string) (name, version string) {
 	return name, version
 }
 
-func formatSpecifierDiff(sp lockfile.ImporterSpecifierDiff) string {
+func formatSpecifierDiff(sp lockfile.ImporterSpecifierDiff, sym presentation.Symbols) string {
 	importer := sp.Importer
 	if importer == "" {
 		importer = "."
@@ -110,21 +110,25 @@ func formatSpecifierDiff(sp lockfile.ImporterSpecifierDiff) string {
 	name := sp.Name
 	switch {
 	case sp.Before == "" && sp.After != "":
-		return fmt.Sprintf("~ %s %s%s: +%s", importer, name, kind, sp.After)
+		return fmt.Sprintf("%s %s %s%s: %s%s", sym.Updated, importer, name, kind, sym.Added, sp.After)
 	case sp.Before != "" && sp.After == "":
-		return fmt.Sprintf("~ %s %s%s: -%s", importer, name, kind, sp.Before)
+		return fmt.Sprintf("%s %s %s%s: %s%s", sym.Updated, importer, name, kind, sym.Removed, sp.Before)
 	default:
-		return fmt.Sprintf("~ %s %s%s: %s -> %s", importer, name, kind, sp.Before, sp.After)
+		return fmt.Sprintf("%s %s %s%s: %s %s %s", sym.Updated, importer, name, kind, sp.Before, sym.Arrow, sp.After)
 	}
 }
 
-func shortDigest(digest string) string {
+// shortDigest truncates a digest with the canonical ellipsis when available.
+// When no symbols are available, uses literal "..." as fallback.
+func shortDigest(digest string) string { return shortDigestWith(digest, "...") }
+
+func shortDigestWith(digest string, ellipsis string) string {
 	const prefix = "sha256:"
 	if strings.HasPrefix(digest, prefix) && len(digest) > len(prefix)+12 {
-		return digest[:len(prefix)+12] + "…"
+		return digest[:len(prefix)+12] + ellipsis
 	}
 	if len(digest) > 16 {
-		return digest[:16] + "…"
+		return digest[:16] + ellipsis
 	}
 	return digest
 }

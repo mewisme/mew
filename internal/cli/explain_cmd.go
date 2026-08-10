@@ -56,7 +56,7 @@ func runExplainPackage(cmd *cobra.Command, name string, asJSON bool) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(ex)
 	}
-	return resolver.FormatPackageExplanation(ex, cmd.OutOrStdout(), resolver.ColorEnabledForWriter(cmd.OutOrStdout()))
+	return resolver.FormatPackageExplanation(ex, cmd.OutOrStdout())
 }
 
 func newExplainPeerCmd() *cobra.Command {

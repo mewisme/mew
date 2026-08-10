@@ -58,7 +58,8 @@ func RenderRich(md string, opts RenderOptions) (string, error) {
 		}
 		// Horizontal rule.
 		if trim == "---" || trim == "***" || trim == "___" || trim == "- - -" || trim == "* * *" {
-			out = append(out, theme.Muted.Sprint("----"))
+			rule := strings.Repeat(opts.Symbols.Separator, 4)
+			out = append(out, theme.Muted.Sprint(rule))
 			continue
 		}
 		if strings.HasPrefix(trim, "|") && strings.Contains(trim, "|") {
@@ -76,12 +77,12 @@ func RenderRich(md string, opts RenderOptions) (string, error) {
 		}
 		if m := reUL.FindStringSubmatch(line); m != nil {
 			text := formatInline(m[2], opts)
-			out = append(out, wrapPrefixedStyled("  - ", text, width, theme.Primary, color.New())...)
+			out = append(out, wrapPrefixedStyled("  - ", text, width, theme.Primary, nil)...)
 			continue
 		}
 		if m := reOL.FindStringSubmatch(line); m != nil {
 			text := formatInline(m[2], opts)
-			out = append(out, wrapPrefixedStyled("  "+m[1]+". ", text, width, theme.Primary, color.New())...)
+			out = append(out, wrapPrefixedStyled("  "+m[1]+". ", text, width, theme.Primary, nil)...)
 			continue
 		}
 		text := formatInlineRich(line, opts, theme)
@@ -92,6 +93,7 @@ func RenderRich(md string, opts RenderOptions) (string, error) {
 }
 
 // wrapPrefixedStyled wraps text with a styled prefix.
+// bodyStyle may be nil — continuation lines are then emitted unstyled.
 func wrapPrefixedStyled(prefix, text string, width int, prefixStyle, bodyStyle *color.Color) []string {
 	rawOut := wrapPrefixed(prefix, text, width)
 	if len(rawOut) == 0 {
@@ -102,15 +104,22 @@ func wrapPrefixedStyled(prefix, text string, width int, prefixStyle, bodyStyle *
 	for i, line := range rawOut {
 		if i == 0 {
 			if padLen < len(line) {
-				out[i] = prefixStyle.Sprint(line[:padLen]) + bodyStyle.Sprint(line[padLen:])
+				out[i] = prefixStyle.Sprint(line[:padLen]) + applyMaybe(bodyStyle, line[padLen:])
 			} else {
 				out[i] = prefixStyle.Sprint(line)
 			}
 		} else {
-			out[i] = bodyStyle.Sprint(line)
+			out[i] = applyMaybe(bodyStyle, line)
 		}
 	}
 	return out
+}
+
+func applyMaybe(c *color.Color, s string) string {
+	if c == nil {
+		return s
+	}
+	return c.Sprint(s)
 }
 
 func formatInlineRich(s string, opts RenderOptions, theme presentation.Theme) string {

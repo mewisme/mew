@@ -14,7 +14,7 @@ func TestMapEnvironmentPreparedWarmDLX(t *testing.T) {
 	view := presentation.MapEnvironmentPrepared(diagnostics.EnvironmentPreparedEvent{
 		Source:     "dlx",
 		CacheState: "warm-hit",
-	}, "eslint 9.12.0", false)
+	}, "eslint 9.12.0", false, presentation.UnicodeSymbols.Ellipsis)
 	if !strings.Contains(view.Title, "eslint") {
 		t.Fatalf("title=%q", view.Title)
 	}
@@ -36,7 +36,7 @@ func TestMapEnvironmentPreparedSnapshotSafeLabels(t *testing.T) {
 		CacheState:     "warm-hit",
 		NetworkUsed:    false,
 		IdentityDigest: "abcdef0123456789",
-	}, "eslint", false)
+	}, "eslint", false, presentation.UnicodeSymbols.Ellipsis)
 	got := map[string]string{}
 	for _, r := range view.Rows {
 		got[r.Key] = r.Value
@@ -64,7 +64,7 @@ func TestMapEnvironmentPreparedCapsule(t *testing.T) {
 	view := presentation.MapEnvironmentPrepared(diagnostics.EnvironmentPreparedEvent{
 		Source:      "capsule",
 		NetworkUsed: false,
-	}, "tool", false)
+	}, "tool", false, presentation.UnicodeSymbols.Ellipsis)
 	got := map[string]string{}
 	for _, r := range view.Rows {
 		got[r.Key] = r.Value

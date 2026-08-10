@@ -3,11 +3,12 @@ package cli
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/mewisme/mew/internal/presentation"
 )
 
 type helpGroup struct {
@@ -88,8 +89,8 @@ func configureGroupedHelp(root *cobra.Command) {
 	cobra.AddTemplateFunc("mewBareScripts", renderBareScripts)
 	cobra.AddTemplateFunc("mewGroupedCommands", renderGroupedCommands)
 	cobra.AddTemplateFunc("mewCommandSections", renderCommandSections)
-	cobra.AddTemplateFunc("dimParens", dimParens)
-	cobra.AddTemplateFunc("styleMew", styleMew)
+	cobra.AddTemplateFunc("dimParens", presentation.DimParentheses)
+	cobra.AddTemplateFunc("styleMew", presentation.StyleMewName)
 	for _, cmd := range root.Commands() {
 		applyCommandHelp(cmd)
 	}
@@ -179,33 +180,10 @@ func aliasSuffix(cmd *cobra.Command) string {
 	return " (" + strings.Join(parts, ", ") + ")"
 }
 
-var (
-	reParens  = regexp.MustCompile(`\([^)]+\)`)
-	reANSISGR = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-	// reMew matches "Mew" and binary names m, mx, mew, mewx at word boundaries.
-	reMew = regexp.MustCompile(`\b(Mew|mew|mewx|mx|m)\b`)
-)
-
-// dimParens wraps every (...) group with faint/dim ANSI styling.
-// Strips any nested ANSI inside the parens so content is dim-only.
-func dimParens(s string) string {
-	return reParens.ReplaceAllStringFunc(s, func(m string) string {
-		clean := reANSISGR.ReplaceAllString(m, "")
-		return "\x1b[2m" + clean + "\x1b[22m"
-	})
-}
-
-// styleMew wraps Mew and binary names (m, mx, mew, mewx) in bright magenta.
-func styleMew(s string) string {
-	return reMew.ReplaceAllStringFunc(s, func(m string) string {
-		return "\x1b[95;1m" + m + "\x1b[39;22m"
-	})
-}
-
 func formatCommandLine(cmd *cobra.Command) string {
 	name := cmd.Name() + ":"
 	line := fmt.Sprintf("  %-15s %s%s", name, cmd.Short, aliasSuffix(cmd))
-	return dimParens(styleMew(line))
+	return presentation.DimParentheses(presentation.StyleMewName(line))
 }
 
 func renderGroupedCommands(cmd *cobra.Command) string {
@@ -294,7 +272,7 @@ func renderCommandSections(cmd *cobra.Command) string {
 		}
 	}
 	if b.Len() > 0 {
-		return styleMew("\n" + b.String())
+		return presentation.StyleMewName("\n" + b.String())
 	}
 	return ""
 }

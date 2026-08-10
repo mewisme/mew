@@ -113,6 +113,14 @@ func statusSymbol(s Symbols, st Status) string {
 		return s.Error
 	case StatusInfo:
 		return s.Info
+	case StatusPending:
+		return s.Pending
+	case StatusRunning:
+		return s.Running
+	case StatusSkipped:
+		return s.Skipped
+	case StatusCancelled:
+		return s.Warning // cancellation uses warning glyph
 	default:
 		return ""
 	}

@@ -5,11 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
-
-	fc "github.com/fatih/color"
 
 	"github.com/mewisme/mew/internal/apperr"
 	"github.com/mewisme/mew/internal/graph"
@@ -322,26 +319,13 @@ func pathsToImporters(target string, parents map[string][]string, importers map[
 	return out
 }
 
-// FormatPackageExplanation renders human output scoped to one package.
-func FormatPackageExplanation(ex *PackageExplanation, w io.Writer, color bool) error {
+// FormatPackageExplanation renders human-readable output for one package.
+// Output is plain text (no ANSI); the CLI layer may optionally add color.
+func FormatPackageExplanation(ex *PackageExplanation, w io.Writer) error {
 	if ex == nil {
 		return nil
 	}
-	boldStyle := fc.New(fc.Bold)
-	dimStyle := fc.New(fc.Faint)
-	bold := func(s string) string {
-		if !color {
-			return s
-		}
-		return boldStyle.Sprint(s)
-	}
-	dim := func(s string) string {
-		if !color {
-			return s
-		}
-		return dimStyle.Sprint(s)
-	}
-	if _, err := fmt.Fprintf(w, "package %s\n", bold(ex.Package)); err != nil {
+	if _, err := fmt.Fprintf(w, "package %s\n", ex.Package); err != nil {
 		return err
 	}
 	if ex.Conflict != nil {
@@ -349,11 +333,11 @@ func FormatPackageExplanation(ex *PackageExplanation, w io.Writer, color bool) e
 		return err
 	}
 	for _, d := range ex.Decisions {
-		line := fmt.Sprintf("%s@%s → %s (%s)", d.Package, d.Requested, d.Selected, d.Reason)
+		line := fmt.Sprintf("%s@%s -> %s (%s)", d.Package, d.Requested, d.Selected, d.Reason)
 		if detail := ReasonDetailFor(d.Reason); detail.Text != "" {
-			line += " — " + detail.Text
+			line += " -- " + detail.Text
 			if detail.Code != "" {
-				line += dim(" [" + detail.Code + "]")
+				line += " [" + detail.Code + "]"
 			}
 		}
 		if len(d.PeerProviders) > 0 {
@@ -374,27 +358,12 @@ func FormatPackageExplanation(ex *PackageExplanation, w io.Writer, color bool) e
 			return err
 		}
 		for _, p := range ex.Paths {
-			if _, err := fmt.Fprintf(w, "  %s\n", strings.Join(p.Chain, " → ")); err != nil {
+			if _, err := fmt.Fprintf(w, "  %s\n", strings.Join(p.Chain, " -> ")); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
-}
-
-func ColorEnabledForWriter(w io.Writer) bool {
-	if os.Getenv("NO_COLOR") != "" {
-		return false
-	}
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
 // ExplainPeer dry-resolves and returns a conflict tree when peerName is unsatisfied.
@@ -439,7 +408,7 @@ func formatConflictNode(b *strings.Builder, n ConflictNode, depth int) {
 	}
 	fmt.Fprintln(b, line)
 	if len(n.SearchPath) > 0 {
-		fmt.Fprintf(b, "%ssearch: %s\n", prefix, strings.Join(n.SearchPath, " → "))
+		fmt.Fprintf(b, "%ssearch: %s\n", prefix, strings.Join(n.SearchPath, " -> "))
 	}
 	if len(n.Candidates) > 0 {
 		fmt.Fprintf(b, "%scandidates: %s\n", prefix, strings.Join(n.Candidates, ", "))

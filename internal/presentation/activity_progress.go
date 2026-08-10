@@ -10,12 +10,6 @@ import (
 	"github.com/mewisme/mew/internal/diagnostics"
 )
 
-// unicodeActivityFrames are the Braille-inspired spinner glyphs for rich output.
-var unicodeActivityFrames = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
-
-// asciiActivityFrames are the safe fallback spinner glyphs.
-var asciiActivityFrames = []string{"|", "/", "-", "\\"}
-
 // ActivityProgressRenderer is a gh-style transient single-line progress sink
 // for stderr. It starts lazily, redraws in place with \r + CSI K, truncates
 // to the terminal width, and never owns stdin, signals, or the alt screen.
@@ -24,6 +18,7 @@ type ActivityProgressRenderer struct {
 	w  io.Writer
 
 	settings EffectiveSettings
+	theme    Theme
 	frames   []string
 	interval time.Duration
 
@@ -57,14 +52,11 @@ func NewActivityProgressRenderer(w io.Writer, settings EffectiveSettings) *Activ
 	if w == nil {
 		w = io.Discard
 	}
-	frames := unicodeActivityFrames
-	if !settings.UseUnicode {
-		frames = asciiActivityFrames
-	}
 	return &ActivityProgressRenderer{
 		w:        w,
 		settings: settings,
-		frames:   frames,
+		theme:    NewTheme(settings.ThemeMode),
+		frames:   settings.Symbols.SpinnerFrames,
 		interval: 100 * time.Millisecond,
 		ops:      make(map[string]*activityOp),
 	}
@@ -145,11 +137,7 @@ func (r *ActivityProgressRenderer) Notice(ev diagnostics.NoticeEvent) {
 	if msg == "" {
 		return
 	}
-	sym := r.settings.Symbols.Warning
-	if r.settings.UseColor {
-		theme := NewTheme(r.settings.ThemeMode)
-		sym = theme.Warning.Sprint(sym)
-	}
+	sym := RenderSemanticSymbol(r.settings.Symbols, r.theme, StatusWarning, r.settings.UseColor)
 	if r.started && len(r.ops) > 0 {
 		r.clearLineLocked()
 		r.writeLocked(sym + " " + msg + "\n")
@@ -280,8 +268,7 @@ func (r *ActivityProgressRenderer) drawLocked() {
 
 	frame := r.frames[r.frameIdx%len(r.frames)]
 	if r.settings.UseColor {
-		theme := NewTheme(r.settings.ThemeMode)
-		frame = theme.Info.Sprint(frame)
+		frame = r.theme.Running.Sprint(frame)
 	}
 
 	label := op.Kind

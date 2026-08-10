@@ -5,13 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/mewisme/mew/internal/diagnostics"
-)
-
-var (
-	prepAccent = color.New(color.FgCyan)
-	prepMuted  = color.New(color.Faint)
 )
 
 // ExecutionPrepView is the human banner shown before child launch.
@@ -27,6 +21,7 @@ func MapEnvironmentPrepared(
 	ev diagnostics.EnvironmentPreparedEvent,
 	command string,
 	debug bool,
+	ellipsis string,
 ) ExecutionPrepView {
 	view := ExecutionPrepView{Title: runningTitle(command)}
 	source, env, network, integrity := mapPreparedLabels(ev)
@@ -51,8 +46,8 @@ func MapEnvironmentPrepared(
 	addRow("Integrity", integrity)
 
 	if debug {
-		addRow("Identity", shortDigest(ev.IdentityDigest))
-		addRow("Graph", shortDigest(ev.GraphDigest))
+		addRow("Identity", shortDigest(ev.IdentityDigest, ellipsis))
+		addRow("Graph", shortDigest(ev.GraphDigest, ellipsis))
 	}
 
 	return view
@@ -140,22 +135,23 @@ func shortID(digest string) string {
 	}
 }
 
-func shortDigest(digest string) string {
+func shortDigest(digest, ellipsis string) string {
 	digest = strings.TrimSpace(digest)
 	if len(digest) > 12 {
-		return digest[:12] + "…"
+		return digest[:12] + ellipsis
 	}
 	return digest
 }
 
 // RenderExecutionPrep formats a prep view with arrow title, optional stages, and KV rows.
 func RenderExecutionPrep(view ExecutionPrepView, settings EffectiveSettings) string {
+	theme := NewTheme(settings.ThemeMode)
 	lines := make([]string, 0, len(view.Stages)+len(view.Rows)+1)
 
 	for _, stage := range view.Stages {
 		if stage = strings.TrimSpace(stage); stage != "" {
 			if settings.UseColor {
-				stage = prepMuted.Sprint(stage)
+				stage = applyStyle(theme.Faint, stage, true)
 			}
 			lines = append(lines, "  "+stage)
 		}
@@ -168,18 +164,18 @@ func RenderExecutionPrep(view ExecutionPrepView, settings EffectiveSettings) str
 
 	title := arrow + " " + strings.TrimSpace(view.Title)
 	if settings.UseColor {
-		title = prepAccent.Sprint(title)
+		title = applyStyle(theme.Primary, title, true)
 	}
 	lines = append(lines, title)
 
 	if len(view.Rows) > 0 {
-		lines = append(lines, renderPrepRows(view.Rows, settings)...)
+		lines = append(lines, renderPrepRows(view.Rows, settings, theme)...)
 	}
 
 	return strings.Join(lines, "\n")
 }
 
-func renderPrepRows(rows []KeyValue, settings EffectiveSettings) []string {
+func renderPrepRows(rows []KeyValue, settings EffectiveSettings, theme Theme) []string {
 	width := 0
 	for _, row := range rows {
 		width = max(width, len(row.Key))
@@ -189,7 +185,7 @@ func renderPrepRows(rows []KeyValue, settings EffectiveSettings) []string {
 	for _, row := range rows {
 		key := fmt.Sprintf("%-*s", width, row.Key)
 		if settings.UseColor {
-			key = prepMuted.Sprint(key)
+			key = applyStyle(theme.Faint, key, true)
 		}
 
 		lines = append(lines,

@@ -1,19 +1,19 @@
-[95;1mMew[39;22m is a Go-based JavaScript toolchain and package manager for packages, scripts, and runtime enhancements. [2m(v0.0.0-test+deadbee)[22m
+Mew is a Go-based JavaScript toolchain and package manager for packages, scripts, and runtime enhancements. (v0.0.0-test+deadbee)
 
-Usage: [95;1mm[39;22m <command> [...flags] [...args]
+Usage: m <command> [...flags] [...args]
 
 Common workflows
-  install:        Install dependencies [2m(m i)[22m
-  add:            Add a dependency [2m(m a)[22m
+  install:        Install dependencies (m i)
+  add:            Add a dependency (m a)
   run:            Run a package script
-  x:              Execute a package binary [2m(m mx)[22m
+  x:              Execute a package binary (m mx)
   exec:           Execute a local package binary
   ci:             Clean install from lockfile
   update:         Update dependencies and refresh the lockfile
 
 Dependencies and packages
   init:           Initialize a project
-  remove:         Remove a dependency [2m(m rm)[22m
+  remove:         Remove a dependency (m rm)
   link:           Link a local package
   dedupe:         Reduce duplicate dependencies in the lockfile
   prune:          Remove extraneous packages from node_modules
@@ -31,9 +31,9 @@ Run and scripts
   watch:          Watch files and restart on changes
 
 Inspect and recover
-  ls:             List dependency tree or workspace packages [2m(m list)[22m
+  ls:             List dependency tree or workspace packages (m list)
   outdated:       Check for outdated package versions
-  explain:        Explain resolution decisions [2m(m why)[22m
+  explain:        Explain resolution decisions (m why)
   plan:           Preview install mutations
   history:        Show install snapshot timeline
   snapshot:       Manage install snapshots
@@ -50,7 +50,7 @@ Security and trust
   sbom:           Export a software bill of materials
   builds:         Lifecycle build script audit
   trust:          Trust lifecycle scripts for packages
-  approve-builds: Approve lifecycle scripts for packages [2m(m approve-build)[22m
+  approve-builds: Approve lifecycle scripts for packages (m approve-build)
 
 Cache and artifacts
   cache:          Manage the download cache
@@ -61,14 +61,14 @@ Cache and artifacts
 Configuration and tooling
   config:         Manage configuration
   development:    Developer tooling
-  benchmark:      Performance benchmarks [2m(m bench)[22m
+  benchmark:      Performance benchmarks (m bench)
   conformance:    Run certification conformance suites
   version:        Print version information
   completion:     Generate shell completion scripts
 
 Other
   node-args:      Run a JS file with explicit Node/V8 flags
-  resolve-module: Show how [95;1mMew[39;22m resolves a module specifier
+  resolve-module: Show how Mew resolves a module specifier
   runtime:        Inspect and trace runtime execution
   transform:      Inspect transform capabilities and compiler option support
 
@@ -77,18 +77,18 @@ Flags:
       --ascii                use ASCII instead of Unicode symbols
       --config string        JSONC config file overlay path
       --cwd string           project working directory
-      --debug                verbose diagnostics [2m(env MEW_DEBUG or M_LOG=debug)[22m
-      --filter stringArray   workspace package filter [2m(pnpm-style)[22m
-  -h, --help                 help for [95;1mMew[39;22m
-      --log-level string     log level: error [2m|[22m warn [2m|[22m info [2m|[22m debug
+      --debug                verbose diagnostics (env MEW_DEBUG or M_LOG=debug)
+      --filter stringArray   workspace package filter (pnpm-style)
+  -h, --help                 help for Mew
+      --log-level string     log level: error | warn | info | debug
       --no-color             disable ANSI color
       --no-progress          disable progress output
       --no-summary           suppress command summary output
       --offline              force offline mode
-      --output string        output mode: rich [2m|[22m plain [2m|[22m json [2m|[22m ndjson [2m|[22m silent
+      --output string        output mode: rich | plain | json | ndjson | silent
       --prefer-offline       prefer cached artifacts
-  -r, --recursive            workspace recursive mode [2m(consumed by m run)[22m
-  -v, --version              version for [95;1mMew[39;22m
+  -r, --recursive            workspace recursive mode (consumed by m run)
+  -v, --version              version for Mew
 
-Use "[95;1mm[39;22m [command] --help" for more information about a command.
-Use "[95;1mm[39;22m help <topic>" for curated topics [2m(errors, runner, lifecycle-trust, …)[22m.
+Use "m [command] --help" for more information about a command.
+Use "m help <topic>" for curated topics (errors, runner, lifecycle-trust, …).

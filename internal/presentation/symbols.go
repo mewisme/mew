@@ -1,6 +1,9 @@
 package presentation
 
 // Symbols holds status glyphs for Unicode or ASCII output.
+// These are the canonical reusable UI glyph definitions for the terminal.
+// Each field is semantic; callers request rendering via [RenderSemanticSymbol] or
+// [StaticRenderer.Symbol] rather than hardcoding glyphs.
 type Symbols struct {
 	Success  string
 	Warning  string
@@ -18,6 +21,13 @@ type Symbols struct {
 
 	// Placeholder for nil or empty values in human output.
 	Placeholder string
+
+	// Separator is a horizontal/detail separator glyph for terminal output.
+	// E.g. detail separators in explain output, horizontal rules in help.
+	Separator string
+
+	// SpinnerFrames are the animation frames for activity progress spinners.
+	SpinnerFrames []string
 }
 
 // UnicodeSymbols is the default rich glyph set.
@@ -37,6 +47,8 @@ var UnicodeSymbols = Symbols{
 	Ellipsis: "…",
 
 	Placeholder: "—",
+	Separator: "—",
+	SpinnerFrames: unicodeActivityFrames,
 }
 
 // ASCIISymbols is the plain-safe fallback set.
@@ -56,7 +68,15 @@ var ASCIISymbols = Symbols{
 	Ellipsis: "...",
 
 	Placeholder: "-",
+	Separator: "-",
+	SpinnerFrames: asciiActivityFrames,
 }
+
+// Spinner frame glyphs: these are the canonical sets for activity progress.
+var (
+	unicodeActivityFrames = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"}
+	asciiActivityFrames   = []string{"|", "/", "-", "\\"}
+)
 
 // SelectSymbols returns Unicode or ASCII glyphs.
 func SelectSymbols(useUnicode bool) Symbols {
@@ -87,6 +107,7 @@ func ValidateSymbolWidths(s Symbols) []string {
 		{"Removed", s.Removed},
 		{"Ellipsis", s.Ellipsis},
 		{"Placeholder", s.Placeholder},
+		{"Separator", s.Separator},
 	}
 	var bad []string
 	for _, c := range check {

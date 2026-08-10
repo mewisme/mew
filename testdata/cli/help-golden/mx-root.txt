@@ -1,9 +1,9 @@
-[95;1mMew[39;22m package executable runner. Executes local or temporary package binaries. [2m(v0.0.0-test+deadbee)[22m
+Mew package executable runner. Executes local or temporary package binaries. (v0.0.0-test+deadbee)
 
-Usage: [95;1mmx[39;22m <command> [...flags] [...args]
+Usage: mx <command> [...flags] [...args]
 
 Cache and artifacts
-  cache:          Manage [95;1mmx[39;22m execution cache
+  cache:          Manage mx execution cache
 
 Configuration and tooling
   version:        Print version information
@@ -14,17 +14,17 @@ Flags:
       --ascii                use ASCII instead of Unicode symbols
       --config string        JSONC config file overlay path
       --cwd string           project working directory
-      --debug                verbose diagnostics [2m(env MEW_DEBUG or M_LOG=debug)[22m
-      --filter stringArray   workspace package filter [2m(pnpm-style)[22m
-  -h, --help                 help for [95;1mMew[39;22m
-      --log-level string     log level: error [2m|[22m warn [2m|[22m info [2m|[22m debug
+      --debug                verbose diagnostics (env MEW_DEBUG or M_LOG=debug)
+      --filter stringArray   workspace package filter (pnpm-style)
+  -h, --help                 help for Mew
+      --log-level string     log level: error | warn | info | debug
       --no-color             disable ANSI color
       --no-progress          disable progress output
       --no-summary           suppress command summary output
       --offline              force offline mode
-      --output string        output mode: rich [2m|[22m plain [2m|[22m json [2m|[22m ndjson [2m|[22m silent
+      --output string        output mode: rich | plain | json | ndjson | silent
       --prefer-offline       prefer cached artifacts
-  -v, --version              version for [95;1mMew[39;22m
+  -v, --version              version for Mew
 
-Use "[95;1mmx[39;22m [command] --help" for more information about a command.
-Use "[95;1mmx[39;22m help <topic>" for curated topics [2m(errors, runner, lifecycle-trust, …)[22m.
+Use "mx [command] --help" for more information about a command.
+Use "mx help <topic>" for curated topics (errors, runner, lifecycle-trust, …).

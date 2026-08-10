@@ -3,6 +3,7 @@ package presentation
 import "github.com/fatih/color"
 
 // Theme holds semantic *color.Color styles for one palette.
+// Semantic styles belong here; feature modules do not choose raw colors.
 type Theme struct {
 	Success *color.Color
 	Warning *color.Color
@@ -13,6 +14,7 @@ type Theme struct {
 	Secondary *color.Color
 	Muted     *color.Color
 	Strong    *color.Color
+	Faint     *color.Color
 
 	Command *color.Color
 	Package *color.Color
@@ -32,6 +34,15 @@ type Theme struct {
 	Header *color.Color
 	Label  *color.Color
 	Value  *color.Color
+
+	// Arrow is the semantic style for navigation/action arrows.
+	Arrow *color.Color
+	// Running is the semantic style for active/progress symbols.
+	Running *color.Color
+	// Pending is the semantic style for queued/not-yet-started symbols.
+	Pending *color.Color
+	// Skipped is the semantic style for skipped symbols (muted, not warning).
+	Skipped *color.Color
 }
 
 // NewTheme builds a palette for mode. ThemeNone returns identity colors.
@@ -52,10 +63,11 @@ func noneTheme() Theme {
 	id := color.New()
 	return Theme{
 		Success: id, Warning: id, Error: id, Info: id,
-		Primary: id, Secondary: id, Muted: id, Strong: id,
+		Primary: id, Secondary: id, Muted: id, Strong: id, Faint: id,
 		Command: id, Package: id, Version: id, Path: id, Code: id, Number: id,
 		Added: id, AddedBold: id, Updated: id, UpdatedBold: id, Removed: id, RemovedBold: id, Reused: id,
 		Header: id, Label: id, Value: id,
+		Arrow: id, Running: id, Pending: id, Skipped: id,
 	}
 }
 
@@ -66,14 +78,16 @@ func lightTheme() Theme {
 		Error:       color.New(color.FgRed),
 		Info:        color.New(color.FgCyan),
 		Primary:     color.New(color.FgCyan),
+		Secondary:   color.New(color.FgHiBlack),
 		Muted:       color.New(color.FgHiBlack),
-		Strong:      color.New(color.FgBlack, color.Bold),
+		Strong:      color.New(color.Bold),
+		Faint:       color.New(color.Faint),
 		Command:     color.New(color.FgCyan),
 		Package:     color.New(color.FgCyan),
-		Version:     color.New(color.FgBlack),
-		Path:        color.New(color.FgHiBlack),
+		Version:     color.New(color.Bold),
+		Path:        color.New(),
 		Code:        color.New(color.FgMagenta),
-		Number:      color.New(color.FgBlack),
+		Number:      color.New(color.Bold),
 		Added:       color.New(color.FgGreen),
 		AddedBold:   color.New(color.FgGreen, color.Bold),
 		Updated:     color.New(color.FgYellow),
@@ -81,9 +95,13 @@ func lightTheme() Theme {
 		Removed:     color.New(color.FgRed),
 		RemovedBold: color.New(color.FgRed, color.Bold),
 		Reused:      color.New(color.FgHiBlack),
-		Header:      color.New(color.FgBlack, color.Bold),
-		Label:       color.New(color.FgBlack, color.Bold),
-		Value:       color.New(color.FgBlack),
+		Header:      color.New(color.Bold),
+		Label:       color.New(color.Faint),
+		Value:       color.New(),
+		Arrow:       color.New(color.FgCyan),
+		Running:     color.New(color.FgCyan),
+		Pending:     color.New(color.FgHiBlack),
+		Skipped:     color.New(color.FgHiBlack),
 	}
 }
 
@@ -94,12 +112,14 @@ func darkTheme() Theme {
 		Error:       color.New(color.FgHiRed),
 		Info:        color.New(color.FgHiCyan),
 		Primary:     color.New(color.FgHiCyan),
+		Secondary:   color.New(color.FgHiBlack),
 		Muted:       color.New(color.FgHiBlack),
 		Strong:      color.New(color.FgHiWhite, color.Bold),
+		Faint:       color.New(color.Faint),
 		Command:     color.New(color.FgHiCyan),
 		Package:     color.New(color.FgHiMagenta),
 		Version:     color.New(color.FgHiGreen),
-		Path:        color.New(color.FgHiBlue),
+		Path:        color.New(),
 		Code:        color.New(color.FgHiMagenta),
 		Number:      color.New(color.FgHiYellow),
 		Added:       color.New(color.FgHiGreen),
@@ -110,8 +130,12 @@ func darkTheme() Theme {
 		RemovedBold: color.New(color.FgHiRed, color.Bold),
 		Reused:      color.New(color.FgHiBlack),
 		Header:      color.New(color.FgHiWhite, color.Bold),
-		Label:       color.New(color.FgHiWhite, color.Bold),
+		Label:       color.New(color.Faint),
 		Value:       color.New(color.FgHiWhite),
+		Arrow:       color.New(color.FgHiCyan),
+		Running:     color.New(color.FgHiCyan),
+		Pending:     color.New(color.FgHiBlack),
+		Skipped:     color.New(color.FgHiBlack),
 	}
 }
 
@@ -124,8 +148,10 @@ func accessibleTheme() Theme {
 		Error:       bold,
 		Info:        plain,
 		Primary:     bold,
+		Secondary:   plain,
 		Muted:       plain,
 		Strong:      bold,
+		Faint:       plain,
 		Command:     bold,
 		Package:     bold,
 		Version:     plain,
@@ -140,8 +166,12 @@ func accessibleTheme() Theme {
 		RemovedBold: bold,
 		Reused:      plain,
 		Header:      bold,
-		Label:       bold,
+		Label:       plain,
 		Value:       plain,
+		Arrow:       bold,
+		Running:     plain,
+		Pending:     plain,
+		Skipped:     plain,
 	}
 }
 
