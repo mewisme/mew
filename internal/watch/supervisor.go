@@ -95,6 +95,8 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 	// watcherDone signals that the watcher's event or error channels
 	// have closed unexpectedly (watcher failure).
 	watcherDone := make(chan struct{})
+	var closeWatcherOnce sync.Once
+	closeWatcherDone := func() { closeWatcherOnce.Do(func() { close(watcherDone) }) }
 	go func() {
 		for err := range w.Errors() {
 			if err != nil {
@@ -102,11 +104,7 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 			}
 		}
 		// Error channel closed; signal watcher failure.
-		select {
-		case <-watcherDone:
-		default:
-			close(watcherDone)
-		}
+		closeWatcherDone()
 	}()
 
 	eventCh := w.Events()
@@ -141,11 +139,7 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 			debounceTimer = time.AfterFunc(debounce, notifyChange)
 			mu.Unlock()
 		}
-		select {
-		case <-watcherDone:
-		default:
-			close(watcherDone)
-		}
+		closeWatcherDone()
 	}()
 
 	type childResult struct {
