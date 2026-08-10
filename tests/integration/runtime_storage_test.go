@@ -726,3 +726,20 @@ func TestRuntimeStorageOwnershipRace(t *testing.T) {
 		t.Errorf("ownership race failures:\n%s", out)
 	}
 }
+
+// --- Stale lock regression (P0: Issue 1) ---
+
+func TestRuntimeStorageStaleLockRegression(t *testing.T) {
+	skipWithoutNode(t)
+	proj := storageFixture(t)
+
+	t.Setenv("MEW_STORAGE_TEST_HOOKS", "1")
+	code, combined := runMWithRuntime(t, proj, "storage-stale-lock-regression.js")
+	if code != 0 {
+		t.Fatalf("exit %d:\n%s", code, combined)
+	}
+	out := storageOutput(t, proj)
+	if out != "STALE_LOCK_OK" {
+		t.Errorf("stale lock regression failures:\n%s", out)
+	}
+}

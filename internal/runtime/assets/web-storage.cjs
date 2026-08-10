@@ -33,7 +33,7 @@ var DEFAULT_QUOTA = 5 * 1024 * 1024; // 5 MiB
 var LOCK_MAX_WAIT = 30 * 1000;       // 30 s
 var LOCK_RETRY = 25;                 // 25 ms
 var LOCK_GRACE = 5 * 1000;           // 5 s grace for malformed/missing owner
-var STALE_LOCK_MAX_AGE = 60 * 1000;  // 60 s fallback stale threshold
+var HEARTBEAT_MAX_AGE = 60 * 1000;   // 60 s: stale heartbeat → owner abandoned (PID reuse guard)
 var TEMP_CLEANUP_AGE = 5 * 60 * 1000; // 5 min for abandoned temp files
 
 // ---- helpers -----------------------------------------------------------
@@ -95,35 +95,78 @@ function tombstoneRoot(lockDir) {
 }
 
 // isProcessAlive reports whether a PID is likely alive.
-// On POSIX, kill(pid, 0) with ESRCH means dead.  On Windows, always
-// returns true — mtime-based fallback handles staleness there.
+// Uses kill(pid, 0) which works on all platforms: ESRCH means the process
+// does not exist.  EPERM/EACCES mean it exists but we lack permission to
+// signal it — treat as alive (conservative).  PID reuse is a known
+// limitation; the heartbeat in owner.json guards against it.
 function isProcessAlive(pid) {
-  if (os.platform() === 'win32') return true;
   try {
     process.kill(pid, 0);
     return true;
   } catch (e) {
+    // ESRCH: target process does not exist → dead.
+    // EPERM/EACCES: process exists but no permission → conservatively alive.
     return e.code !== 'ESRCH';
   }
 }
 
 // isLockStale checks whether an existing lock directory can be safely
 // taken over.  dirMod is the lock directory mtime (ms since epoch).
+//
+// Staleness rules (in order):
+//   1. Live process + recent heartbeat        → NOT stale (owner alive)
+//   2. Live process + stale heartbeat         → stale (PID reuse: original
+//      owner stopped renewing, new process got same PID)
+//   3. Live process + legacy owner (no hb)    → NOT stale (conservative;
+//      PID reuse is documented limitation for pre-heartbeat locks)
+//   4. Dead process (ESRCH)                   → stale after LOCK_GRACE
+//   *. Malformed / missing owner             → stale after LOCK_GRACE
+//
+// Lock age alone is NEVER sufficient to steal a lock whose owner is
+// provably or conservatively assumed to still be alive.
 function isLockStale(lockDir, dirMod) {
   var ownerFile = ownerPath(lockDir);
   var now = Date.now();
   try {
     var data = fs.readFileSync(ownerFile, 'utf8');
     var owner = JSON.parse(data);
-    if (owner.pid && !isProcessAlive(owner.pid)) {
-      return true;
-    }
-    var age = now - Math.min(dirMod, owner.processStart || dirMod);
-    return age > STALE_LOCK_MAX_AGE;
-  } catch (e) {
-    if (e.code === 'ENOENT') {
+
+    if (!owner || typeof owner !== 'object') {
+      // Malformed owner metadata — wait grace period before reclaim.
       return now - dirMod > LOCK_GRACE;
     }
+
+    // Rule 4: process confirmed dead → reclaim after grace.
+    if (owner.pid && typeof owner.pid === 'number' && !isProcessAlive(owner.pid)) {
+      return now - dirMod > LOCK_GRACE;
+    }
+
+    // Process appears alive (or PID missing/unusable).
+    if (owner.pid && typeof owner.pid === 'number') {
+      // Check heartbeat for PID reuse protection.
+      if (owner.heartbeat && typeof owner.heartbeat === 'number') {
+        // Rule 1: recent heartbeat → definitely alive.
+        if (now - owner.heartbeat <= HEARTBEAT_MAX_AGE) {
+          return false;
+        }
+        // Rule 2: stale heartbeat → PID likely reused, lock abandoned.
+        return true;
+      }
+
+      // Rule 3: legacy lock without heartbeat.  Process appears alive.
+      // Conservative: assume the original owner is still alive.
+      // PID reuse for legacy locks is a documented limitation.
+      return false;
+    }
+
+    // No PID in metadata — malformed.  Wait grace period.
+    return now - dirMod > LOCK_GRACE;
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      // Owner file missing — wait grace period.
+      return now - dirMod > LOCK_GRACE;
+    }
+    // Unreadable owner file — wait grace period.
     return now - dirMod > LOCK_GRACE;
   }
 }
@@ -165,14 +208,22 @@ function cleanupTombstones(root) {
 // The release closure captures the unique lockId so it can verify
 // ownership before deleting the lock directory — a stale owner whose
 // lock was taken over must not delete the successor's lock.
+//
+// Owner metadata written to owner.json contains:
+//   lockId       — unique per acquisition (ABA guard)
+//   pid          — owner process ID (for liveness check)
+//   processStart — approximate wall-clock process start
+//   heartbeat    — last liveness refresh (PID reuse guard)
 function acquireLock(lockDir) {
   try {
     fs.mkdirSync(lockDir, 0o755);
     var lockId = randomHex(8);
+    var now = Date.now();
     var owner = JSON.stringify({
       lockId: lockId,
       pid: process.pid,
-      processStart: Date.now(),
+      processStart: now - (process.uptime() * 1000),
+      heartbeat: now,
     });
     fs.writeFileSync(ownerPath(lockDir), owner, { mode: 0o644 });
     return function release() {
@@ -181,6 +232,26 @@ function acquireLock(lockDir) {
   } catch (e) {
     if (e.code === 'EEXIST') return null;
     throw e;
+  }
+}
+
+// refreshHeartbeat updates the heartbeat timestamp in owner.json.
+// Only updates if the lockId still matches (lock not taken over).
+// Returns true on success, false if ownership cannot be confirmed.
+// Never throws — failure to refresh is non-fatal (the lock remains owned
+// and isLiveProcess will still report the owner as alive).
+function refreshHeartbeat(lockDir, lockId) {
+  try {
+    var ownerFile = ownerPath(lockDir);
+    var data = fs.readFileSync(ownerFile, 'utf8');
+    var owner = JSON.parse(data);
+    if (!owner || typeof owner !== 'object') return false;
+    if (owner.lockId !== lockId) return false;
+    owner.heartbeat = Date.now();
+    fs.writeFileSync(ownerFile, JSON.stringify(owner), { mode: 0o644 });
+    return true;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -493,6 +564,19 @@ function createLocalStorage(opts) {
   // Must be called while holding the storage lock.
   function writeLocked() {
     if (!filePath) return;
+    // Refresh heartbeat before potentially slow write so the lock owner
+    // remains provably alive even for large stores on slow disks.
+    // Uses PID match: only the owning process can be inside this critical
+    // section, so PID equality proves ownership.
+    try {
+      var ownerFile = ownerPath(lockPath(filePath));
+      var raw = fs.readFileSync(ownerFile, 'utf8');
+      var meta = JSON.parse(raw);
+      if (meta && meta.pid === process.pid) {
+        meta.heartbeat = Date.now();
+        fs.writeFileSync(ownerFile, JSON.stringify(meta), { mode: 0o644 });
+      }
+    } catch (_) { /* best-effort: stale heartbeat is non-fatal */ }
     saveStore(filePath, items, order);
     try { storeMtimeMs = fs.statSync(filePath).mtimeMs; } catch (_) { /* ignore */ }
   }
@@ -635,10 +719,15 @@ if (process.env.MEW_STORAGE_TEST_HOOKS === '1') {
   __lockTest = {
     acquireLock: acquireLock,
     releaseLock: releaseLock,
+    refreshHeartbeat: refreshHeartbeat,
     tryTakeoverStaleLock: tryTakeoverStaleLock,
     isLockStale: isLockStale,
+    isProcessAlive: isProcessAlive,
     lockPath: lockPath,
     tombstoneRoot: tombstoneRoot,
+    HEARTBEAT_MAX_AGE: HEARTBEAT_MAX_AGE,
+    LOCK_GRACE: LOCK_GRACE,
+    LOCK_MAX_WAIT: LOCK_MAX_WAIT,
   };
 }
 

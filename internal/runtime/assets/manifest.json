@@ -63,8 +63,8 @@
       "path": "web-storage.cjs",
       "role": "loader-support",
       "moduleType": "cjs",
-      "size": 18482,
-      "sha256": "132cd8b46293a2068c4262f3916cb91b60fe554964bb1db0d8ca022dff072938"
+      "size": 22480,
+      "sha256": "28d7b32f422b1b6f0925ab574697324be6b9ef363334fe1106f69df74a0f7426"
     }
   ]
 }
