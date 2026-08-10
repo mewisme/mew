@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	fc "github.com/fatih/color"
+
 	"github.com/mewisme/mew/internal/apperr"
 	"github.com/mewisme/mew/internal/graph"
 	"github.com/mewisme/mew/internal/semver"
@@ -325,8 +327,20 @@ func FormatPackageExplanation(ex *PackageExplanation, w io.Writer, color bool) e
 	if ex == nil {
 		return nil
 	}
-	bold := ansiWrap(color, "\x1b[1m", "\x1b[0m")
-	dim := ansiWrap(color, "\x1b[2m", "\x1b[0m")
+	boldStyle := fc.New(fc.Bold)
+	dimStyle := fc.New(fc.Faint)
+	bold := func(s string) string {
+		if !color {
+			return s
+		}
+		return boldStyle.Sprint(s)
+	}
+	dim := func(s string) string {
+		if !color {
+			return s
+		}
+		return dimStyle.Sprint(s)
+	}
 	if _, err := fmt.Fprintf(w, "package %s\n", bold(ex.Package)); err != nil {
 		return err
 	}
@@ -366,13 +380,6 @@ func FormatPackageExplanation(ex *PackageExplanation, w io.Writer, color bool) e
 		}
 	}
 	return nil
-}
-
-func ansiWrap(enabled bool, prefix, suffix string) func(string) string {
-	if !enabled {
-		return func(s string) string { return s }
-	}
-	return func(s string) string { return prefix + s + suffix }
 }
 
 func ColorEnabledForWriter(w io.Writer) bool {

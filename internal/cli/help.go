@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -10,47 +11,75 @@ import (
 )
 
 type helpGroup struct {
-	title string
+	id    string // stable internal key; safe to keep when the display title is renamed
+	title string // user-facing label
 	names []string
 }
+
+const (
+	helpGroupCommon       = "common"
+	helpGroupDependencies = "dependencies"
+	helpGroupRun          = "run"
+	helpGroupInspect      = "inspect"
+	helpGroupSecurity     = "security"
+	helpGroupArtifacts    = "artifacts"
+	helpGroupTooling      = "tooling"
+)
 
 type cmdHelpMeta struct {
 	group    string
 	examples []string
 	related  []string
-	workflow int // lower ranks first in Common workflows
+	workflow int // lower ranks first in the common-workflows group
 }
 
 var helpGroups = []helpGroup{
-	{title: "Common workflows", names: []string{"install", "add", "run", "exec", "ci", "update"}},
-	{title: "Project and dependencies", names: []string{"init", "remove", "link", "dedupe", "prune", "resolve", "fetch", "lock", "patch", "publish", "pkg", "project"}},
-	{title: "Run and execute", names: []string{"env", "view", "watch"}},
-	{title: "Inspect and diagnose", names: []string{"ls", "outdated", "explain", "plan", "history", "snapshot", "doctor", "features", "diff", "recover", "rollback"}},
-	{title: "Security and policy", names: []string{"audit", "policy", "verify", "sbom", "builds", "trust", "approve-builds"}},
-	{title: "Cache, store, and artifacts", names: []string{"cache", "store", "pack", "capsule"}},
-	{title: "Configuration and development", names: []string{"config", "development", "benchmark", "conformance", "version", "completion"}},
+	{id: helpGroupCommon, title: "Common workflows", names: []string{"install", "add", "run", "x", "exec", "ci", "update"}},
+	{id: helpGroupDependencies, title: "Dependencies and packages", names: []string{"init", "remove", "link", "dedupe", "prune", "resolve", "fetch", "lock", "patch", "publish", "pkg", "project"}},
+	{id: helpGroupRun, title: "Run and scripts", names: []string{"env", "view", "watch"}},
+	{id: helpGroupInspect, title: "Inspect and recover", names: []string{"ls", "outdated", "explain", "plan", "history", "snapshot", "doctor", "features", "diff", "recover", "rollback"}},
+	{id: helpGroupSecurity, title: "Security and trust", names: []string{"audit", "policy", "verify", "sbom", "builds", "trust", "approve-builds"}},
+	{id: helpGroupArtifacts, title: "Cache and artifacts", names: []string{"cache", "store", "pack", "capsule"}},
+	{id: helpGroupTooling, title: "Configuration and tooling", names: []string{"config", "development", "benchmark", "conformance", "version", "completion"}},
+}
+
+// renameHelpGroup changes only the user-facing group title.
+// The stable group ID remains unchanged, so metadata can safely keep referring to it.
+func renameHelpGroup(id, title string) bool {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return false
+	}
+
+	for i := range helpGroups {
+		if helpGroups[i].id == id {
+			helpGroups[i].title = title
+			return true
+		}
+	}
+	return false
 }
 
 var commandHelpRegistry = map[string]cmdHelpMeta{
-	"install":  {group: "Common workflows", workflow: 1, examples: []string{"m install", "m install --frozen-lockfile"}, related: []string{"add", "ci", "plan"}},
-	"add":      {group: "Common workflows", workflow: 2, examples: []string{"m add lodash", "m add -D typescript"}},
-	"run":      {group: "Common workflows", workflow: 3, examples: []string{"m run build", "m run test -- --watch"}},
-	"exec":     {group: "Common workflows", workflow: 4, examples: []string{"m exec eslint ."}},
-	"ci":       {group: "Common workflows", workflow: 5, examples: []string{"m ci"}},
-	"update":   {group: "Common workflows", workflow: 6, examples: []string{"m update", "m update lodash"}},
-	"config":   {group: "Configuration and development", examples: []string{"m config list", "m config get ui.theme", "m config set ui.theme dark", "m config set install.linker isolated --scope project", "m config validate"}},
-	"doctor":   {group: "Inspect and diagnose", examples: []string{"m doctor", "m doctor --json"}},
-	"ls":       {group: "Inspect and diagnose", examples: []string{"m ls", "m ls -r"}},
-	"outdated": {group: "Inspect and diagnose", examples: []string{"m outdated", "m outdated --json"}},
-	"explain":  {group: "Inspect and diagnose", examples: []string{"m explain lodash"}},
-	"plan":     {group: "Inspect and diagnose", examples: []string{"m plan", "m plan update"}},
-	"audit":    {group: "Security and policy", examples: []string{"m audit", "m audit --fail-on high"}},
-	"policy":   {group: "Security and policy", examples: []string{"m policy check"}},
-	"features": {group: "Inspect and diagnose", examples: []string{"m features --format table"}},
-	"project":  {group: "Project and dependencies", examples: []string{"m project info"}},
-	"pkg":      {group: "Project and dependencies", examples: []string{"m pkg get name", "m pkg get version"}},
-	"cache":    {group: "Cache, store, and artifacts", examples: []string{"m cache dir", "m cache verify"}},
-	"store":    {group: "Cache, store, and artifacts", examples: []string{"m store status", "m store path"}},
+	"install":  {group: helpGroupCommon, workflow: 1, examples: []string{"m install", "m install --frozen-lockfile"}, related: []string{"add", "ci", "plan"}},
+	"add":      {group: helpGroupCommon, workflow: 2, examples: []string{"m add lodash", "m add -D typescript"}},
+	"run":      {group: helpGroupCommon, workflow: 3, examples: []string{"m run build", "m run test -- --watch"}},
+	"exec":     {group: helpGroupCommon, workflow: 4, examples: []string{"m exec eslint ."}},
+	"ci":       {group: helpGroupCommon, workflow: 5, examples: []string{"m ci"}},
+	"update":   {group: helpGroupCommon, workflow: 6, examples: []string{"m update", "m update lodash"}},
+	"config":   {group: helpGroupTooling, examples: []string{"m config list", "m config get ui.theme", "m config set ui.theme dark", "m config set install.linker isolated --scope project", "m config validate"}},
+	"doctor":   {group: helpGroupInspect, examples: []string{"m doctor", "m doctor --json"}},
+	"ls":       {group: helpGroupInspect, examples: []string{"m ls", "m ls -r"}},
+	"outdated": {group: helpGroupInspect, examples: []string{"m outdated", "m outdated --json"}},
+	"explain":  {group: helpGroupInspect, examples: []string{"m explain lodash"}},
+	"plan":     {group: helpGroupInspect, examples: []string{"m plan", "m plan update"}},
+	"audit":    {group: helpGroupSecurity, examples: []string{"m audit", "m audit --fail-on high"}},
+	"policy":   {group: helpGroupSecurity, examples: []string{"m policy check"}},
+	"features": {group: helpGroupInspect, examples: []string{"m features --format table"}},
+	"project":  {group: helpGroupDependencies, examples: []string{"m project info"}},
+	"pkg":      {group: helpGroupDependencies, examples: []string{"m pkg get name", "m pkg get version"}},
+	"cache":    {group: helpGroupArtifacts, examples: []string{"m cache dir", "m cache verify"}},
+	"store":    {group: helpGroupArtifacts, examples: []string{"m store status", "m store path"}},
 }
 
 func configureGroupedHelp(root *cobra.Command) {
@@ -59,6 +88,8 @@ func configureGroupedHelp(root *cobra.Command) {
 	cobra.AddTemplateFunc("mewBareScripts", renderBareScripts)
 	cobra.AddTemplateFunc("mewGroupedCommands", renderGroupedCommands)
 	cobra.AddTemplateFunc("mewCommandSections", renderCommandSections)
+	cobra.AddTemplateFunc("dimParens", dimParens)
+	cobra.AddTemplateFunc("styleMew", styleMew)
 	for _, cmd := range root.Commands() {
 		applyCommandHelp(cmd)
 	}
@@ -77,19 +108,18 @@ func applyCommandHelp(cmd *cobra.Command) {
 	}
 }
 
-const groupedRootHelpTemplate = `{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+const groupedRootHelpTemplate = `{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces | styleMew | dimParens}}
 
-{{end}}{{- if .HasSubCommands}}Usage:
-  {{.CommandPath}} [command]
+{{end}}{{- if .HasSubCommands}}Usage: {{styleMew .CommandPath}} <command> [...flags] [...args]
 {{end}}{{mewBareScripts .}}{{if .HasSubCommands}}
 {{mewGroupedCommands .}}
 {{- end}}
 {{if .HasAvailableLocalFlags}}
 Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces | styleMew | dimParens}}
 {{end}}{{if .HasAvailableInheritedFlags}}
 Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces | styleMew | dimParens}}
 {{end}}{{if .HasExample}}
 
 Examples:
@@ -99,35 +129,33 @@ Examples:
 
 Additional help topics:
 {{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
-  {{rpad .CommandPath 28}} {{.Short}}{{end}}{{end}}
+  {{rpad (styleMew .CommandPath) 28}} {{.Short}}{{end}}{{end}}
 {{- end}}
-Use "{{.CommandPath}} [command] --help" for more information about a command.
-Use "{{.CommandPath}} help <topic>" for curated topics (errors, runner, lifecycle-trust, …).
+Use "{{styleMew .CommandPath}} [command] --help" for more information about a command.
+{{printf "Use \"%s help <topic>\" for curated topics (errors, runner, lifecycle-trust, …)." (.CommandPath | styleMew) | dimParens}}
 `
 
-const groupedUsageTemplate = `Usage:{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+const groupedUsageTemplate = `Usage:{{if .Runnable}} {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
 {{mewGroupedCommands .}}{{end}}{{if .HasAvailableLocalFlags}}
 Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces | styleMew | dimParens}}{{end}}{{if .HasAvailableInheritedFlags}}
 Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces | styleMew | dimParens}}{{end}}
 `
 
-const commandHelpTemplate = `{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+const commandHelpTemplate = `{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces | styleMew | dimParens}}
 
-{{end}}Usage:
-  {{.UseLine}}
+{{end}}Usage: {{.UseLine}}
 {{if .HasSubCommands}}
 Available Commands:
-{{range .Commands}}{{if (and .IsAvailableCommand (not .IsAdditionalHelpTopicCommand))}}  {{rpad .Name 14}} {{.Short}}
+{{range .Commands}}{{if (and .IsAvailableCommand (not .IsAdditionalHelpTopicCommand))}}  {{rpad (print .Name ":") 15}} {{.Short | styleMew | dimParens}}
 {{end}}{{end}}{{end}}{{mewCommandSections .}}
 {{- if .HasAvailableLocalFlags}}
 Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces | styleMew | dimParens}}
 {{end}}{{if .HasAvailableInheritedFlags}}
 Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces | styleMew | dimParens}}
 {{end}}
 `
 
@@ -151,8 +179,33 @@ func aliasSuffix(cmd *cobra.Command) string {
 	return " (" + strings.Join(parts, ", ") + ")"
 }
 
+var (
+	reParens  = regexp.MustCompile(`\([^)]+\)`)
+	reANSISGR = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	// reMew matches "Mew" and binary names m, mx, mew, mewx at word boundaries.
+	reMew = regexp.MustCompile(`\b(Mew|mew|mewx|mx|m)\b`)
+)
+
+// dimParens wraps every (...) group with faint/dim ANSI styling.
+// Strips any nested ANSI inside the parens so content is dim-only.
+func dimParens(s string) string {
+	return reParens.ReplaceAllStringFunc(s, func(m string) string {
+		clean := reANSISGR.ReplaceAllString(m, "")
+		return "\x1b[2m" + clean + "\x1b[22m"
+	})
+}
+
+// styleMew wraps Mew and binary names (m, mx, mew, mewx) in bright magenta.
+func styleMew(s string) string {
+	return reMew.ReplaceAllStringFunc(s, func(m string) string {
+		return "\x1b[95;1m" + m + "\x1b[39;22m"
+	})
+}
+
 func formatCommandLine(cmd *cobra.Command) string {
-	return fmt.Sprintf("  %-14s %s%s", cmd.Name(), cmd.Short, aliasSuffix(cmd))
+	name := cmd.Name() + ":"
+	line := fmt.Sprintf("  %-15s %s%s", name, cmd.Short, aliasSuffix(cmd))
+	return dimParens(styleMew(line))
 }
 
 func renderGroupedCommands(cmd *cobra.Command) string {
@@ -241,7 +294,7 @@ func renderCommandSections(cmd *cobra.Command) string {
 		}
 	}
 	if b.Len() > 0 {
-		return "\n" + b.String()
+		return styleMew("\n" + b.String())
 	}
 	return ""
 }
@@ -268,6 +321,15 @@ func rootBinaryName(cmd *cobra.Command) string {
 }
 
 func renderBareScripts(cmd *cobra.Command) string {
+	// Only the root command's own help shows scripts. Subcommands inherit the
+	// root template via cobra, but scripts belong only on the root.
+	if cmd == nil || cmd.Root() != cmd {
+		return ""
+	}
+	// MX roots do not dispatch package.json scripts.
+	if isMXRoot(cmd) {
+		return ""
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return ""

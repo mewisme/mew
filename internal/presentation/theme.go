@@ -1,37 +1,40 @@
 package presentation
 
-import lipgloss "charm.land/lipgloss/v2"
+import "github.com/fatih/color"
 
-// Theme holds semantic Lip Gloss styles for one palette.
+// Theme holds semantic *color.Color styles for one palette.
 type Theme struct {
-	Primary   lipgloss.Style
-	Secondary lipgloss.Style
-	Muted     lipgloss.Style
-	Strong    lipgloss.Style
+	Success *color.Color
+	Warning *color.Color
+	Error   *color.Color
+	Info    *color.Color
 
-	Success lipgloss.Style
-	Warning lipgloss.Style
-	Error   lipgloss.Style
-	Info    lipgloss.Style
+	Primary   *color.Color
+	Secondary *color.Color
+	Muted     *color.Color
+	Strong    *color.Color
 
-	Command lipgloss.Style
-	Package lipgloss.Style
-	Version lipgloss.Style
-	Path    lipgloss.Style
-	Code    lipgloss.Style
-	Number  lipgloss.Style
+	Command *color.Color
+	Package *color.Color
+	Version *color.Color
+	Path    *color.Color
+	Code    *color.Color
+	Number  *color.Color
 
-	Added   lipgloss.Style
-	Updated lipgloss.Style
-	Removed lipgloss.Style
-	Reused  lipgloss.Style
+	Added       *color.Color
+	AddedBold   *color.Color
+	Updated     *color.Color
+	UpdatedBold *color.Color
+	Removed     *color.Color
+	RemovedBold *color.Color
+	Reused      *color.Color
 
-	Header lipgloss.Style
-	Label  lipgloss.Style
-	Value  lipgloss.Style
+	Header *color.Color
+	Label  *color.Color
+	Value  *color.Color
 }
 
-// NewTheme builds a palette for mode. ThemeNone returns identity styles.
+// NewTheme builds a palette for mode. ThemeNone returns identity colors.
 func NewTheme(mode ThemeMode) Theme {
 	switch mode {
 	case ThemeDark:
@@ -46,108 +49,107 @@ func NewTheme(mode ThemeMode) Theme {
 }
 
 func noneTheme() Theme {
-	id := lipgloss.NewStyle()
+	id := color.New()
 	return Theme{
-		Primary: id, Secondary: id, Muted: id, Strong: id,
 		Success: id, Warning: id, Error: id, Info: id,
+		Primary: id, Secondary: id, Muted: id, Strong: id,
 		Command: id, Package: id, Version: id, Path: id, Code: id, Number: id,
-		Added: id, Updated: id, Removed: id, Reused: id,
+		Added: id, AddedBold: id, Updated: id, UpdatedBold: id, Removed: id, RemovedBold: id, Reused: id,
 		Header: id, Label: id, Value: id,
 	}
 }
 
-// brightANSI returns a lipgloss style with the given ANSI 4-bit bright color.
-// These resolve to the terminal's configured bright palette — vivid on dark,
-// light, and transparent backgrounds.
-func brightANSI(code string) lipgloss.Style {
-	return fg(code)
-}
-
 func lightTheme() Theme {
 	return Theme{
-		Primary:   fg("6"),            // cyan (standard, dark)
-		Secondary: fg("8"),            // bright black (gray)
-		Muted:     fg("8"),            // bright black (gray)
-		Strong:    fg("0").Bold(true), // black bold
-		Success:   fg("2"),            // green (standard, dark)
-		Warning:   fg("3"),            // yellow (standard, dark)
-		Error:     fg("1"),            // red (standard, dark)
-		Info:      fg("6"),            // cyan (standard, dark)
-		Command:   fg("6"),            // cyan (standard, dark)
-		Package:   fg("6"),            // cyan (standard, dark)
-		Version:   fg("0"),            // black
-		Path:      fg("8"),            // gray
-		Code:      fg("5"),            // magenta (standard, dark)
-		Number:    fg("0"),            // black
-		Added:     fg("2"),            // green (standard, dark)
-		Updated:   fg("3"),            // yellow (standard, dark)
-		Removed:   fg("1"),            // red (standard, dark)
-		Reused:    fg("8"),            // gray
-		Header:    fg("0").Bold(true), // black bold
-		Label:     fg("0").Bold(true), // black bold
-		Value:     fg("0"),            // black
+		Success:     color.New(color.FgGreen),
+		Warning:     color.New(color.FgYellow),
+		Error:       color.New(color.FgRed),
+		Info:        color.New(color.FgCyan),
+		Primary:     color.New(color.FgCyan),
+		Muted:       color.New(color.FgHiBlack),
+		Strong:      color.New(color.FgBlack, color.Bold),
+		Command:     color.New(color.FgCyan),
+		Package:     color.New(color.FgCyan),
+		Version:     color.New(color.FgBlack),
+		Path:        color.New(color.FgHiBlack),
+		Code:        color.New(color.FgMagenta),
+		Number:      color.New(color.FgBlack),
+		Added:       color.New(color.FgGreen),
+		AddedBold:   color.New(color.FgGreen, color.Bold),
+		Updated:     color.New(color.FgYellow),
+		UpdatedBold: color.New(color.FgYellow, color.Bold),
+		Removed:     color.New(color.FgRed),
+		RemovedBold: color.New(color.FgRed, color.Bold),
+		Reused:      color.New(color.FgHiBlack),
+		Header:      color.New(color.FgBlack, color.Bold),
+		Label:       color.New(color.FgBlack, color.Bold),
+		Value:       color.New(color.FgBlack),
 	}
 }
 
 func darkTheme() Theme {
 	return Theme{
-		Primary:   brightANSI("14"),            // bright cyan
-		Secondary: brightANSI("8"),             // bright black (gray)
-		Muted:     brightANSI("8"),             // bright black (gray)
-		Strong:    brightANSI("15").Bold(true), // bright white bold
-		Success:   brightANSI("10"),            // bright green
-		Warning:   brightANSI("11"),            // bright yellow
-		Error:     brightANSI("9"),             // bright red
-		Info:      brightANSI("14"),            // bright cyan
-		Command:   brightANSI("14"),            // bright cyan
-		Package:   brightANSI("13"),            // bright magenta (distinct from command)
-		Version:   brightANSI("10"),            // bright green (distinct from plain value)
-		Path:      brightANSI("12"),            // bright blue (distinct from gray)
-		Code:      brightANSI("13"),            // bright magenta
-		Number:    brightANSI("11"),            // bright yellow
-		Added:     brightANSI("10"),            // bright green
-		Updated:   brightANSI("11"),            // bright yellow
-		Removed:   brightANSI("9"),             // bright red
-		Reused:    brightANSI("8"),             // gray
-		Header:    brightANSI("15").Bold(true), // bright white bold
-		Label:     brightANSI("15").Bold(true), // bright white bold
-		Value:     brightANSI("15"),            // bright white
+		Success:     color.New(color.FgHiGreen),
+		Warning:     color.New(color.FgHiYellow),
+		Error:       color.New(color.FgHiRed),
+		Info:        color.New(color.FgHiCyan),
+		Primary:     color.New(color.FgHiCyan),
+		Muted:       color.New(color.FgHiBlack),
+		Strong:      color.New(color.FgHiWhite, color.Bold),
+		Command:     color.New(color.FgHiCyan),
+		Package:     color.New(color.FgHiMagenta),
+		Version:     color.New(color.FgHiGreen),
+		Path:        color.New(color.FgHiBlue),
+		Code:        color.New(color.FgHiMagenta),
+		Number:      color.New(color.FgHiYellow),
+		Added:       color.New(color.FgHiGreen),
+		AddedBold:   color.New(color.FgHiGreen, color.Bold),
+		Updated:     color.New(color.FgHiYellow),
+		UpdatedBold: color.New(color.FgHiYellow, color.Bold),
+		Removed:     color.New(color.FgHiRed),
+		RemovedBold: color.New(color.FgHiRed, color.Bold),
+		Reused:      color.New(color.FgHiBlack),
+		Header:      color.New(color.FgHiWhite, color.Bold),
+		Label:       color.New(color.FgHiWhite, color.Bold),
+		Value:       color.New(color.FgHiWhite),
 	}
 }
 
 func accessibleTheme() Theme {
+	bold := color.New(color.Bold)
+	plain := color.New()
 	return Theme{
-		Primary:   lipgloss.NewStyle().Bold(true),
-		Secondary: lipgloss.NewStyle(),
-		Muted:     lipgloss.NewStyle(),
-		Strong:    lipgloss.NewStyle().Bold(true),
-		Success:   lipgloss.NewStyle().Bold(true),
-		Warning:   lipgloss.NewStyle().Bold(true),
-		Error:     lipgloss.NewStyle().Bold(true),
-		Info:      lipgloss.NewStyle(),
-		Command:   lipgloss.NewStyle().Bold(true),
-		Package:   lipgloss.NewStyle().Bold(true),
-		Version:   lipgloss.NewStyle(),
-		Path:      lipgloss.NewStyle(),
-		Code:      lipgloss.NewStyle(),
-		Number:    lipgloss.NewStyle(),
-		Added:     lipgloss.NewStyle().Bold(true),
-		Updated:   lipgloss.NewStyle().Bold(true),
-		Removed:   lipgloss.NewStyle().Bold(true),
-		Reused:    lipgloss.NewStyle(),
-		Header:    lipgloss.NewStyle().Bold(true),
-		Label:     lipgloss.NewStyle().Bold(true),
-		Value:     lipgloss.NewStyle(),
+		Success:     bold,
+		Warning:     bold,
+		Error:       bold,
+		Info:        plain,
+		Primary:     bold,
+		Muted:       plain,
+		Strong:      bold,
+		Command:     bold,
+		Package:     bold,
+		Version:     plain,
+		Path:        plain,
+		Code:        plain,
+		Number:      plain,
+		Added:       bold,
+		AddedBold:   bold,
+		Updated:     bold,
+		UpdatedBold: bold,
+		Removed:     bold,
+		RemovedBold: bold,
+		Reused:      plain,
+		Header:      bold,
+		Label:       bold,
+		Value:       plain,
 	}
 }
 
-func fg(hex string) lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(hex))
-}
-
-func applyStyle(style lipgloss.Style, text string, useColor bool) string {
-	if !useColor || text == "" {
+// applyStyle applies c to text when color is enabled and text is non-empty.
+// A nil *color.Color is treated as identity (no styling).
+func applyStyle(c *color.Color, text string, useColor bool) string {
+	if !useColor || text == "" || c == nil {
 		return text
 	}
-	return style.Render(text)
+	return c.Sprint(text)
 }

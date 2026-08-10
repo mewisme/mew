@@ -104,10 +104,10 @@ type CompareDetail struct {
 
 // Baseline is the external baseline file format.
 type Baseline struct {
-	SchemaVersion int               `json:"schemaVersion"`
-	Environment   BaselineEnv       `json:"environment"`
-	ThresholdPct  float64           `json:"thresholdPct"`
-	Measurements  []BaselineMetric  `json:"measurements"`
+	SchemaVersion int              `json:"schemaVersion"`
+	Environment   BaselineEnv      `json:"environment"`
+	ThresholdPct  float64          `json:"thresholdPct"`
+	Measurements  []BaselineMetric `json:"measurements"`
 }
 
 // BaselineEnv carries the environment identity for compatibility checks.

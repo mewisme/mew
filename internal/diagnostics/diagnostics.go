@@ -13,6 +13,8 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/fatih/color"
+
 	"github.com/mewisme/mew/internal/apperr"
 	"github.com/mewisme/mew/internal/fsx"
 )
@@ -394,7 +396,7 @@ func (r *humanReporter) Error(err error) {
 	}
 	msg := r.base.redact(formatHumanError(err))
 	if r.base.colorEnabled(r.base.opts.Err) {
-		fmt.Fprintf(r.base.opts.Err, "\x1b[31m%s\x1b[0m\n", msg)
+		fmt.Fprintln(r.base.opts.Err, color.New(color.FgRed).Sprint(msg))
 		return
 	}
 	fmt.Fprintln(r.base.opts.Err, msg)

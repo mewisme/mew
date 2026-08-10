@@ -59,9 +59,14 @@ func RenderCompletionSummary(s CompletionSummary, settings EffectiveSettings) st
 		duration = " in " + FormatDuration(s.Duration)
 	}
 
+	styledPrefix := prefix
+	if settings.UseColor {
+		styledPrefix = prefixColor.Sprint(prefix)
+	}
+
 	return fmt.Sprintf(
 		"%s %s %s%s",
-		prefixColor.Sprint(prefix),
+		styledPrefix,
 		name,
 		verb,
 		duration,

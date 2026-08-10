@@ -148,7 +148,7 @@ func (r *ActivityProgressRenderer) Notice(ev diagnostics.NoticeEvent) {
 	sym := r.settings.Symbols.Warning
 	if r.settings.UseColor {
 		theme := NewTheme(r.settings.ThemeMode)
-		sym = theme.Warning.Render(sym)
+		sym = theme.Warning.Sprint(sym)
 	}
 	if r.started && len(r.ops) > 0 {
 		r.clearLineLocked()
@@ -281,7 +281,7 @@ func (r *ActivityProgressRenderer) drawLocked() {
 	frame := r.frames[r.frameIdx%len(r.frames)]
 	if r.settings.UseColor {
 		theme := NewTheme(r.settings.ThemeMode)
-		frame = theme.Info.Render(frame)
+		frame = theme.Info.Sprint(frame)
 	}
 
 	label := op.Kind

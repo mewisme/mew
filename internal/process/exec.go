@@ -81,6 +81,8 @@ func (s *ExecSupervisor) Wait(ctx context.Context, h *Handle) error {
 
 	select {
 	case err := <-waitDone:
+		// Clean up orphaned grandchildren that inherited the process group.
+		killProcessTree(eh.cmd)
 		if err == nil {
 			return nil
 		}

@@ -9,7 +9,7 @@ import (
 
 // DirectScriptsEnabled reports whether direct m <script> shortcuts are turned on.
 func DirectScriptsEnabled(eff *config.Effective) bool {
-	if config.Bool(eff, "runner.direct_scripts.enabled", false) {
+	if config.Bool(eff, "runner.direct_scripts.enabled", true) {
 		return true
 	}
 	if eff != nil && eff.Env.Initialized() {

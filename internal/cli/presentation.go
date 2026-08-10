@@ -12,8 +12,8 @@ import (
 )
 
 func (g *globalFlags) bindPresentation(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&g.output, "output", "", "output mode: rich|plain|json|ndjson|silent")
-	cmd.PersistentFlags().StringVar(&g.logLevel, "log-level", "", "log level: error|warn|info|debug")
+	cmd.PersistentFlags().StringVar(&g.output, "output", "", "output mode: rich \x1b[2m|\x1b[22m plain \x1b[2m|\x1b[22m json \x1b[2m|\x1b[22m ndjson \x1b[2m|\x1b[22m silent")
+	cmd.PersistentFlags().StringVar(&g.logLevel, "log-level", "", "log level: error \x1b[2m|\x1b[22m warn \x1b[2m|\x1b[22m info \x1b[2m|\x1b[22m debug")
 	cmd.PersistentFlags().BoolVar(&g.noColor, "no-color", false, "disable ANSI color")
 	cmd.PersistentFlags().BoolVar(&g.noProgress, "no-progress", false, "disable progress output")
 	cmd.PersistentFlags().BoolVar(&g.ascii, "ascii", false, "use ASCII instead of Unicode symbols")

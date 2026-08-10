@@ -369,8 +369,8 @@ func TestParseInspectorAddr(t *testing.T) {
 		// Errors.
 		{"99999", "", 0, false, false, true},
 		{"127.0.0.1:99999", "", 0, false, false, true},
-		{"[::1", "", 0, false, false, true},       // unmatched bracket
-		{"[::1]:", "", 0, false, false, true},      // trailing colon after bracket
+		{"[::1", "", 0, false, false, true},         // unmatched bracket
+		{"[::1]:", "", 0, false, false, true},       // trailing colon after bracket
 		{"[::1]garbage", "", 0, false, false, true}, // garbage after bracket
 	}
 	for _, tt := range tests {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	lipgloss "charm.land/lipgloss/v2"
+	"github.com/fatih/color"
 
 	"github.com/mewisme/mew/internal/diagnostics"
 )
@@ -96,7 +96,7 @@ func (p *StaticRichProgressRenderer) OperationCompleted(ev diagnostics.Operation
 	}
 
 	var b strings.Builder
-	var symStyle lipgloss.Style
+	var symStyle *color.Color
 	var sym string
 	switch status {
 	case "ok":
@@ -127,12 +127,12 @@ func (p *StaticRichProgressRenderer) OperationCompleted(ev diagnostics.Operation
 	})
 }
 
-// colorSymbol applies the lipgloss style to the symbol when color is enabled.
-func (p *StaticRichProgressRenderer) colorSymbol(style lipgloss.Style, sym string) string {
+// colorSymbol applies the color to the symbol when color is enabled.
+func (p *StaticRichProgressRenderer) colorSymbol(c *color.Color, sym string) string {
 	if !p.settings.UseColor {
 		return sym
 	}
-	return style.Render(sym)
+	return c.Sprint(sym)
 }
 
 func (p *StaticRichProgressRenderer) Notice(ev diagnostics.NoticeEvent) {
@@ -145,17 +145,11 @@ func (p *StaticRichProgressRenderer) Notice(ev diagnostics.NoticeEvent) {
 	if msg == "" {
 		return
 	}
-	var b strings.Builder
+	sym := p.symbols.Warning
 	if p.settings.UseColor {
-		b.WriteString("\x1b[33m")
+		sym = p.theme.Warning.Sprint(sym)
 	}
-	b.WriteString(p.symbols.Warning)
-	if p.settings.UseColor {
-		b.WriteString("\x1b[0m")
-	}
-	b.WriteString(" ")
-	b.WriteString(msg)
-	p.writeln(b.String())
+	p.writeln(sym + " " + msg)
 }
 
 func (p *StaticRichProgressRenderer) Suspend() {
@@ -233,14 +227,13 @@ func WriteStaticRichInstallSummary(w io.Writer, settings EffectiveSettings, adde
 	if w == nil {
 		return
 	}
-	var b strings.Builder
+	theme := NewTheme(settings.ThemeMode)
+	sym := settings.Symbols.Success
 	if settings.UseColor {
-		b.WriteString("\x1b[32m")
-		b.WriteString(settings.Symbols.Success)
-		b.WriteString("\x1b[0m")
-	} else {
-		b.WriteString(settings.Symbols.Success)
+		sym = theme.Success.Sprint(sym)
 	}
+	var b strings.Builder
+	b.WriteString(sym)
 	b.WriteString(" ")
 	fmt.Fprintf(&b, "installed added=%d updated=%d removed=%d", added, updated, removed)
 	if durationMs > 0 {

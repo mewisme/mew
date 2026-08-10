@@ -11,13 +11,13 @@ import (
 
 func newBenchRuntimeCmd() *cobra.Command {
 	var (
-		cold      bool
-		warm      bool
-		asJSON    bool
-		samples   int
-		warmup    int
-		timeOut   int
-		compare   string
+		cold    bool
+		warm    bool
+		asJSON  bool
+		samples int
+		warmup  int
+		timeOut int
+		compare string
 	)
 	cmd := &cobra.Command{
 		Use:   "runtime",

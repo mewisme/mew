@@ -12,6 +12,7 @@ type Symbols struct {
 	Running  string
 	Skipped  string
 	Added    string
+	Updated  string
 	Removed  string
 	Ellipsis string
 }
@@ -28,6 +29,7 @@ var UnicodeSymbols = Symbols{
 	Running:  "●",
 	Skipped:  "–",
 	Added:    "+",
+	Updated:  "~",
 	Removed:  "-",
 	Ellipsis: "…",
 }
@@ -44,6 +46,7 @@ var ASCIISymbols = Symbols{
 	Running:  "*",
 	Skipped:  "-",
 	Added:    "+",
+	Updated:  "~",
 	Removed:  "-",
 	Ellipsis: "...",
 }
@@ -73,6 +76,7 @@ func ValidateSymbolWidths(s Symbols) []string {
 		{"Running", s.Running},
 		{"Skipped", s.Skipped},
 		{"Added", s.Added},
+		{"Updated", s.Updated},
 		{"Removed", s.Removed},
 		{"Ellipsis", s.Ellipsis},
 	}

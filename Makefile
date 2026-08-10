@@ -585,3 +585,167 @@ check-runtime-assets: assets-check ## [alias] Verify runtime asset manifest
 .PHONY: tidy clean clean-cache clean-reports clean-all
 .PHONY: race fuzz-smoke vuln conformance allowlist install-dev uninstall-dev
 .PHONY: update-runtime-assets check-runtime-assets
+.PHONY: cmd-showcase
+
+# ── Command showcase ────────────────────────────────────────────────────
+
+SHOWCASE_DIR := $(ROOT)bin/showcase
+
+# Banner prints a section header for one command.
+define showcase_banner
+	@echo ''
+	@echo '══════════════════════════════════════════════════════════════════'
+	@echo '  $(1)'
+	@echo '══════════════════════════════════════════════════════════════════'
+endef
+
+cmd-showcase: install-dev ## Print output of every m and mx command
+	@echo '=== MewJS command showcase ==='
+	@echo ''
+	@mkdir -p $(SHOWCASE_DIR)
+	@echo '{"name":"showcase","private":true}' > $(SHOWCASE_DIR)/package.json
+	# ── m standalone commands ──
+	$(call showcase_banner,m version)
+	@cd $(SHOWCASE_DIR) && m version 2>&1 || true
+	$(call showcase_banner,m features)
+	@cd $(SHOWCASE_DIR) && m features --format table 2>&1 || true
+	$(call showcase_banner,m completion bash)
+	@cd $(SHOWCASE_DIR) && m completion bash 2>&1 | head -8 || true
+	$(call showcase_banner,m doctor)
+	@cd $(SHOWCASE_DIR) && m doctor 2>&1 || true
+	# ── m project inspection ──
+	$(call showcase_banner,m pkg)
+	@cd $(SHOWCASE_DIR) && m pkg 2>&1 || true
+	$(call showcase_banner,m project info)
+	@cd $(SHOWCASE_DIR) && m project info 2>&1 || true
+	$(call showcase_banner,m ls)
+	@cd $(SHOWCASE_DIR) && m ls 2>&1 || true
+	$(call showcase_banner,m outdated)
+	@cd $(SHOWCASE_DIR) && m outdated 2>&1 || true
+	$(call showcase_banner,m config get)
+	@cd $(SHOWCASE_DIR) && m config get ui.theme 2>&1 || true
+	$(call showcase_banner,m config list)
+	@cd $(SHOWCASE_DIR) && m config list 2>&1 || true
+	$(call showcase_banner,m config view)
+	@cd $(SHOWCASE_DIR) && m config view 2>&1 || true
+	# ── m plan (dry-run) ──
+	$(call showcase_banner,m plan)
+	@cd $(SHOWCASE_DIR) && m plan 2>&1 || true
+	# ── m lockfile ──
+	$(call showcase_banner,m lock format)
+	@cd $(SHOWCASE_DIR) && m lock format 2>&1 || true
+	$(call showcase_banner,m lock validate)
+	@cd $(SHOWCASE_DIR) && m lock validate 2>&1 || true
+	# ── m resolve (needs a dependency to resolve) ──
+	$(call showcase_banner,m resolve --help)
+	@m resolve --help 2>&1 || true
+	# ── m history / snapshot ──
+	$(call showcase_banner,m history)
+	@cd $(SHOWCASE_DIR) && m history 2>&1 || true
+	$(call showcase_banner,m snapshot list)
+	@cd $(SHOWCASE_DIR) && m snapshot list 2>&1 || true
+	# ── m audit / policy / verify ──
+	$(call showcase_banner,m audit)
+	@cd $(SHOWCASE_DIR) && m audit 2>&1 || true
+	$(call showcase_banner,m policy check)
+	@cd $(SHOWCASE_DIR) && m policy check 2>&1 || true
+	$(call showcase_banner,m verify --help)
+	@m verify --help 2>&1 || true
+	$(call showcase_banner,m sbom)
+	@cd $(SHOWCASE_DIR) && m sbom 2>&1 || true
+	# ── m registry / view ──
+	$(call showcase_banner,m view --help)
+	@m view --help 2>&1 || true
+	$(call showcase_banner,m registry)
+	@cd $(SHOWCASE_DIR) && m registry 2>&1 || true
+	# ── m store ──
+	$(call showcase_banner,m store status)
+	@cd $(SHOWCASE_DIR) && m store status 2>&1 || true
+	$(call showcase_banner,m store path)
+	@cd $(SHOWCASE_DIR) && m store path 2>&1 || true
+	# ── m cache ──
+	$(call showcase_banner,m cache dir)
+	@cd $(SHOWCASE_DIR) && m cache dir 2>&1 || true
+	$(call showcase_banner,m cache verify)
+	@cd $(SHOWCASE_DIR) && m cache verify 2>&1 || true
+	# ── m env ──
+	$(call showcase_banner,m env inspect)
+	@cd $(SHOWCASE_DIR) && m env inspect 2>&1 || true
+	# ── m explain / diff ──
+	$(call showcase_banner,m explain --help)
+	@m explain --help 2>&1 || true
+	$(call showcase_banner,m diff --help)
+	@m diff --help 2>&1 || true
+	# ── m builds ──
+	$(call showcase_banner,m builds)
+	@cd $(SHOWCASE_DIR) && m builds 2>&1 || true
+	# ── m development ──
+	$(call showcase_banner,m development filesystem)
+	@cd $(SHOWCASE_DIR) && m development filesystem 2>&1 || true
+	# ── m remaining commands (--help) ──
+	$(call showcase_banner,m init --help)
+	@m init --help 2>&1 || true
+	$(call showcase_banner,m install --help)
+	@m install --help 2>&1 || true
+	$(call showcase_banner,m add --help)
+	@m add --help 2>&1 || true
+	$(call showcase_banner,m remove --help)
+	@m remove --help 2>&1 || true
+	$(call showcase_banner,m ci --help)
+	@m ci --help 2>&1 || true
+	$(call showcase_banner,m update --help)
+	@m update --help 2>&1 || true
+	$(call showcase_banner,m run --help)
+	@m run --help 2>&1 || true
+	$(call showcase_banner,m exec --help)
+	@m exec --help 2>&1 || true
+	$(call showcase_banner,m link --help)
+	@m link --help 2>&1 || true
+	$(call showcase_banner,m dedupe --help)
+	@m dedupe --help 2>&1 || true
+	$(call showcase_banner,m prune --help)
+	@m prune --help 2>&1 || true
+	$(call showcase_banner,m fetch --help)
+	@m fetch --help 2>&1 || true
+	$(call showcase_banner,m patch --help)
+	@m patch --help 2>&1 || true
+	$(call showcase_banner,m publish --help)
+	@m publish --help 2>&1 || true
+	$(call showcase_banner,m pack --help)
+	@m pack --help 2>&1 || true
+	$(call showcase_banner,m capsule --help)
+	@m capsule --help 2>&1 || true
+	$(call showcase_banner,m transform --help)
+	@m transform --help 2>&1 || true
+	$(call showcase_banner,m node-args --help)
+	@m node-args --help 2>&1 || true
+	$(call showcase_banner,m approve-builds --help)
+	@m approve-builds --help 2>&1 || true
+	$(call showcase_banner,m trust --help)
+	@m trust --help 2>&1 || true
+	$(call showcase_banner,m recover --help)
+	@m recover --help 2>&1 || true
+	$(call showcase_banner,m rollback --help)
+	@m rollback --help 2>&1 || true
+	$(call showcase_banner,m benchmark --help)
+	@m benchmark --help 2>&1 || true
+	$(call showcase_banner,m conformance --help)
+	@m conformance --help 2>&1 || true
+	$(call showcase_banner,m resolve-module --help)
+	@m resolve-module --help 2>&1 || true
+	$(call showcase_banner,m runtime --help)
+	@m runtime --help 2>&1 || true
+	$(call showcase_banner,m watch --help)
+	@m watch --help 2>&1 || true
+	# ── mx commands ──
+	$(call showcase_banner,mx version)
+	@mx version 2>&1 || true
+	$(call showcase_banner,mx cache --help)
+	@mx cache --help 2>&1 || true
+	$(call showcase_banner,mx completion bash)
+	@mx completion bash 2>&1 | head -6 || true
+	@echo ''
+	@echo '══════════════════════════════════════════════════════════════════'
+	@echo '  showcase complete'
+	@echo '══════════════════════════════════════════════════════════════════'
+	@rm -rf $(SHOWCASE_DIR)

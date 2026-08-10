@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -183,12 +184,5 @@ func renderHumanTrace(cmd *cobra.Command, events <-chan trace.Event, sessionID s
 		}
 	}
 
-	out := ""
-	for i, l := range lines {
-		if i > 0 {
-			out += "\n"
-		}
-		out += l
-	}
-	return writeStaticOut(cmd, out)
+	return writeStaticOut(cmd, strings.Join(lines, "\n"))
 }

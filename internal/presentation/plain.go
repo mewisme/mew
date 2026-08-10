@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	lipgloss "charm.land/lipgloss/v2"
+	fc "github.com/fatih/color"
 )
 
 type plainRenderer struct {
@@ -222,7 +222,7 @@ func formatPackageDeltasWithOptions(deltas []PackageDelta, settings EffectiveSet
 	}
 
 	kindNames := []string{"Added", "Updated", "Removed"}
-	kindThemes := []lipgloss.Style{theme.Added, theme.Updated, theme.Removed}
+	kindBoldColors := []*fc.Color{theme.AddedBold, theme.UpdatedBold, theme.RemovedBold}
 	var parts []string
 	for i, group := range groups {
 		if len(group) == 0 {
@@ -230,8 +230,7 @@ func formatPackageDeltasWithOptions(deltas []PackageDelta, settings EffectiveSet
 		}
 		heading := kindNames[i]
 		if color {
-			heading = applyStyle(kindThemes[i], heading, true)
-			heading = lipgloss.NewStyle().Inherit(kindThemes[i]).Bold(true).Render(heading)
+			heading = applyStyle(kindBoldColors[i], heading, true)
 		}
 		body := formatFlatPackageDeltas(group, settings, color, theme)
 		parts = append(parts, heading+"\n"+body)
@@ -245,7 +244,7 @@ func formatPackageDeltasWithOptions(deltas []PackageDelta, settings EffectiveSet
 }
 
 func formatDeltaTruncationNotice(omitted int, color bool, theme Theme, settings EffectiveSettings) string {
-	arrow := "→"
+	arrow := settings.Symbols.Arrow
 	if color {
 		arrow = applyStyle(theme.Muted, arrow, true)
 	}
@@ -291,7 +290,7 @@ func formatFlatPackageDeltas(deltas []PackageDelta, settings EffectiveSettings, 
 				mark = applyStyle(theme.Removed, mark, true)
 			}
 		default:
-			mark = "~"
+			mark = sym.Updated
 			if color {
 				mark = applyStyle(theme.Updated, mark, true)
 			}

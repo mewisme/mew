@@ -76,17 +76,16 @@ func TestForwardedScriptArgsParity(t *testing.T) {
 func TestDirectScriptsGate(t *testing.T) {
 	t.Setenv("MEW_EXPERIMENTAL_DIRECT_SCRIPTS", "")
 	eff := &config.Effective{Values: map[string]config.Value{}}
+	if !DirectScriptsEnabled(eff) {
+		t.Fatal("expected enabled by default")
+	}
+	eff.Values["runner.direct_scripts.enabled"] = config.Value{Raw: false, Source: config.SourceProject}
 	if DirectScriptsEnabled(eff) {
-		t.Fatal("expected disabled")
+		t.Fatal("expected config disabled")
 	}
 	t.Setenv("MEW_EXPERIMENTAL_DIRECT_SCRIPTS", "1")
 	if !DirectScriptsEnabled(eff) {
-		t.Fatal("expected env enabled")
-	}
-	t.Setenv("MEW_EXPERIMENTAL_DIRECT_SCRIPTS", "")
-	eff.Values["runner.direct_scripts.enabled"] = config.Value{Raw: true, Source: config.SourceProject}
-	if !DirectScriptsEnabled(eff) {
-		t.Fatal("expected config enabled")
+		t.Fatal("expected env overrides config to enabled")
 	}
 }
 

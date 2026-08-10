@@ -1,6 +1,23 @@
 package presentation
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+
+	fc "github.com/fatih/color"
+)
+
+var reErrCode = regexp.MustCompile(`ERR_M_\w+`)
+
+// colorErrorRefs wraps ERR_M_* codes with the given style.
+func colorErrorRefs(s string, c *fc.Color, useColor bool) string {
+	if !useColor || c == nil {
+		return s
+	}
+	return reErrCode.ReplaceAllStringFunc(s, func(m string) string {
+		return c.Sprint(m)
+	})
+}
 
 func formatError(view ErrorView, settings EffectiveSettings, color bool, theme Theme) string {
 	if view.Title == "" && view.Message == "" {
@@ -13,7 +30,6 @@ func formatError(view ErrorView, settings EffectiveSettings, color bool, theme T
 			title = "ERROR " + title
 		}
 	} else {
-		title = applyStyle(theme.Error, title, true)
 		if sym := statusSymbol(settings.Symbols, StatusError); sym != "" {
 			title = applyStyle(theme.Error, sym, true) + " " + title
 		}
@@ -25,7 +41,11 @@ func formatError(view ErrorView, settings EffectiveSettings, color bool, theme T
 		if len(parts) > 0 {
 			parts = append(parts, "")
 		}
-		parts = append(parts, view.Message)
+		msg := view.Message
+		if color {
+			msg = colorErrorRefs(msg, theme.Error, true)
+		}
+		parts = append(parts, msg)
 	}
 	if len(view.Context) > 0 {
 		if len(parts) > 0 {
@@ -39,7 +59,7 @@ func formatError(view ErrorView, settings EffectiveSettings, color bool, theme T
 		}
 		codeLine := FormatErrorCode(view.Code)
 		if color {
-			codeLine = applyStyle(theme.Muted, codeLine, true)
+			codeLine = applyStyle(theme.Muted, "Code: ", true) + applyStyle(theme.Error, view.Code, true)
 		}
 		parts = append(parts, codeLine)
 	}
@@ -55,7 +75,7 @@ func formatError(view ErrorView, settings EffectiveSettings, color bool, theme T
 		}
 		line := c.Label + ": " + c.Message
 		if color {
-			line = applyStyle(theme.Muted, line, true)
+			line = applyStyle(theme.Error, c.Label, true) + applyStyle(theme.Muted, ": "+c.Message, true)
 		}
 		parts = append(parts, line)
 	}
