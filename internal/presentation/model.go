@@ -38,7 +38,8 @@ const (
 	RoleAdded SymbolRole = iota
 	RoleUpdated
 	RoleRemoved
-	RoleArrow
+	RoleActionArrow
+	RoleStructuralArrow
 	RoleBullet
 	RoleEllipsis
 	RolePlaceholder
@@ -150,10 +151,26 @@ type TableColumn struct {
 	Align    ColumnAlign
 	Truncate TruncatePolicy
 	Primary  bool // first column used as stacked title
+	// CellStyle sets the ValueKind applied to every cell in this column.
+	// ValuePlain (zero) means no semantic styling.
+	CellStyle ValueKind
+}
+
+// StatusCell is a table cell that carries semantic status metadata.
+// When a row provides a StatusCell for a column, the renderer applies
+// the corresponding status styling (success/warning/error/etc.) instead
+// of treating the value as a plain string.
+type StatusCell struct {
+	Text   string
+	Status Status
 }
 
 // TableModel is a borderless table.
 type TableModel struct {
 	Columns []TableColumn
 	Rows    []map[string]string
+	// RowStatuses provides per-cell status metadata. When a row index and
+	// column key have a StatusCell entry, the renderer applies status
+	// styling (success/warning/error/etc.) instead of plain text.
+	RowStatuses []map[string]StatusCell
 }

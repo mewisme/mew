@@ -49,8 +49,10 @@ func RenderSymbolRole(symbols Symbols, theme Theme, role SymbolRole, useColor bo
 		return applyStyle(theme.Updated, glyph, true)
 	case RoleRemoved:
 		return applyStyle(theme.Removed, glyph, true)
-	case RoleArrow:
+	case RoleActionArrow:
 		return applyStyle(theme.Arrow, glyph, true)
+	case RoleStructuralArrow:
+		return applyStyle(theme.Muted, glyph, true)
 	case RoleBullet:
 		return applyStyle(theme.Primary, glyph, true)
 	case RoleEllipsis, RolePlaceholder, RoleSeparator:
@@ -82,7 +84,7 @@ func symbolRoleGlyph(s Symbols, role SymbolRole) string {
 		return s.Updated
 	case RoleRemoved:
 		return s.Removed
-	case RoleArrow:
+	case RoleActionArrow, RoleStructuralArrow:
 		return s.Arrow
 	case RoleBullet:
 		return s.Bullet

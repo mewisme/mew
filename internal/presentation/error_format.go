@@ -83,7 +83,7 @@ func formatError(view ErrorView, settings EffectiveSettings, color bool, theme T
 }
 
 func formatHintLine(h Hint, settings EffectiveSettings, color bool, theme Theme) string {
-	arrow := RenderSymbolRole(settings.Symbols, theme, RoleArrow, color)
+	arrow := RenderSymbolRole(settings.Symbols, theme, RoleActionArrow, color)
 	if arrow == "" {
 		return h.Message
 	}

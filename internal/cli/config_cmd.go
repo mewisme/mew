@@ -62,14 +62,15 @@ func newConfigGetCmd(g *globalFlags) *cobra.Command {
 				return err
 			}
 			scope := flags.resolvedScope()
-			view, err := resolveConfigGet(eff, key, scope)
+			symbols := g.helpSettings().Symbols
+			view, err := resolveConfigGet(eff, key, scope, symbols)
 			if err != nil {
 				if configOutputStructured(g, cmd) {
 					// Structured consumers get the shape they expect even for a
 					// key the scope does not declare; the typed error still sets
 					// the exit code.
 					if nse := (*notSetError)(nil); errors.As(err, &nse) {
-						_ = writeConfigJSON(cmd, configGetNotSetView(eff, nse.key, scope).json())
+						_ = writeConfigJSON(cmd, configGetNotSetView(eff, nse.key, scope, symbols).json())
 					}
 				}
 				return err
@@ -95,6 +96,7 @@ func newConfigGetCmd(g *globalFlags) *cobra.Command {
 // Only semantically available fields appear.
 func renderConfigGetVerbose(g *globalFlags, cmd *cobra.Command, view configGetView) string {
 	r := g.mustStaticRenderer(cmd)
+	sym := r.Settings().Symbols
 	kvs := []presentation.KeyValue{
 		{Key: "Key", Value: view.Entry.Key},
 	}
@@ -118,7 +120,7 @@ func renderConfigGetVerbose(g *globalFlags, cmd *cobra.Command, view configGetVi
 		}
 		kvs = append(kvs,
 			presentation.KeyValue{Key: "Type", Value: typeStr},
-			presentation.KeyValue{Key: "Default", Value: config.RedactString(view.Entry.Key, formatConfigValue(spec.Default))},
+			presentation.KeyValue{Key: "Default", Value: config.RedactString(view.Entry.Key, formatConfigValue(spec.Default, sym))},
 		)
 		if len(spec.Enum) > 0 {
 			kvs = append(kvs, presentation.KeyValue{Key: "Allowed", Value: strings.Join(spec.Enum, ", ")})
@@ -173,7 +175,8 @@ func newConfigSetCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			prevDisplay, prevRaw, prevSet := scopeValueOrUnset(eff, scope, key)
+			symbols := g.helpSettings().Symbols
+			prevDisplay, prevRaw, prevSet := scopeValueOrUnset(eff, scope, key, symbols)
 
 			if err := config.SetFile(target.Path, key, val); err != nil {
 				return err
@@ -183,18 +186,18 @@ func newConfigSetCmd(g *globalFlags) *cobra.Command {
 			// target-scope and effective values both come from the same state.
 			reloaded, reloadErr := reloadInvocationConfig(cmd.Context(), g)
 			canon := canonicalConfigKey(key)
-			currentDisplay := config.RedactString(canon, formatConfigValue(val))
+			currentDisplay := config.RedactString(canon, formatConfigValue(val, symbols))
 			currentRaw := config.RedactValue(canon, val)
 			effectiveDisplay := ""
 			effectiveRaw := any(nil)
 			effectiveSrc := ""
 			if reloadErr == nil {
-				if curDisplay, curRaw, ok := scopeValueOrUnset(reloaded, scope, key); ok {
+				if curDisplay, curRaw, ok := scopeValueOrUnset(reloaded, scope, key, symbols); ok {
 					currentDisplay = curDisplay
 					currentRaw = curRaw
 				}
 				if ev, eerr := config.GetEffective(reloaded, canon); eerr == nil {
-					effectiveDisplay = config.RedactString(canon, formatConfigValue(ev.Raw))
+					effectiveDisplay = config.RedactString(canon, formatConfigValue(ev.Raw, symbols))
 					effectiveRaw = config.RedactValue(canon, ev.Raw)
 					effectiveSrc = displayConfigSource(ev.Source)
 				}
@@ -277,7 +280,8 @@ func newConfigUnsetCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			prevDisplay, prevRaw, prevSet := scopeValueOrUnset(eff, scope, key)
+			symbols := g.helpSettings().Symbols
+			prevDisplay, prevRaw, prevSet := scopeValueOrUnset(eff, scope, key, symbols)
 
 			// UnsetFile writes nothing when the key is absent, so an already
 			// unset key is an idempotent no-op and other layers are untouched.
@@ -291,7 +295,7 @@ func newConfigUnsetCmd(g *globalFlags) *cobra.Command {
 			var fallbackRaw any
 			if reloaded, err := reloadInvocationConfig(cmd.Context(), g); err == nil {
 				if v, gerr := config.GetEffective(reloaded, canon); gerr == nil {
-					fallbackDisplay = config.RedactString(canon, formatConfigValue(v.Raw))
+					fallbackDisplay = config.RedactString(canon, formatConfigValue(v.Raw, symbols))
 					fallbackRaw = config.RedactValue(canon, v.Raw)
 					fallbackSrc = displayConfigSource(v.Source)
 				}
@@ -363,8 +367,9 @@ func newConfigListCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			symbols := g.helpSettings().Symbols
 			opts := configListOptions{prefix: prefix, changed: changed, inclDefaults: inclDefaults}
-			entries := resolveConfigList(eff, scope, opts)
+			entries := resolveConfigList(eff, scope, opts, symbols)
 			view := configListView{Scope: scope, Entries: entries, InclDefaults: inclDefaults}
 
 			if configOutputStructured(g, cmd) {
@@ -502,10 +507,10 @@ func writeConfigListJSON(cmd *cobra.Command, view configListView, showOrigin boo
 func newConfigExplainCmd(g *globalFlags) *cobra.Command {
 	var flags configWriteFlags
 	cmd := &cobra.Command{
-		Use:   "explain <key>",
+		Use:     "explain <key>",
 		Aliases: []string{"why"},
-		Short: "Show config key resolution chain",
-		Args:  cobra.ExactArgs(1),
+		Short:   "Show config key resolution chain",
+		Args:    cobra.ExactArgs(1),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			return completeConfigKeys(toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
@@ -518,7 +523,8 @@ func newConfigExplainCmd(g *globalFlags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			view, err := resolveConfigExplain(eff, key, flags.resolvedScope())
+			symbols := g.helpSettings().Symbols
+			view, err := resolveConfigExplain(eff, key, flags.resolvedScope(), symbols)
 			if err != nil {
 				return err
 			}
@@ -535,6 +541,7 @@ func newConfigExplainCmd(g *globalFlags) *cobra.Command {
 
 func renderConfigExplainHuman(g *globalFlags, cmd *cobra.Command, view configResolutionView) string {
 	r := g.mustStaticRenderer(cmd)
+	sym := r.Settings().Symbols
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s = %s\n", view.Key, view.Effective.Value)
 	if view.Spec != nil && view.Spec.Description != "" {
@@ -581,7 +588,7 @@ func renderConfigExplainHuman(g *globalFlags, cmd *cobra.Command, view configRes
 		}
 		kv := []presentation.KeyValue{
 			{Key: "Type", Value: typeStr},
-			{Key: "Default", Value: config.RedactString(view.Key, formatConfigValue(spec.Default))},
+			{Key: "Default", Value: config.RedactString(view.Key, formatConfigValue(spec.Default, sym))},
 		}
 		if len(spec.Enum) > 0 {
 			kv = append(kv, presentation.KeyValue{Key: "Allowed", Value: strings.Join(spec.Enum, ", ")})
@@ -1146,8 +1153,8 @@ func newConfigResetCmd(g *globalFlags) *cobra.Command {
 			}
 			r := g.mustStaticRenderer(cmd)
 			sym := r.Symbol(presentation.StatusSuccess)
-				return writeStaticOut(cmd, fmt.Sprintf("%s Reset %s configuration\n\n%s\n\nEffective: defaults",
-					sym,
+			return writeStaticOut(cmd, fmt.Sprintf("%s Reset %s configuration\n\n%s\n\nEffective: defaults",
+				sym,
 				scope,
 				r.KeyValues([]presentation.KeyValue{
 					{Key: "File", Value: target.Path, Style: presentation.ValuePath},
@@ -1231,13 +1238,13 @@ func canonicalConfigKey(key string) string {
 // scopeValueOrUnset returns the display and raw values a raw scope holds for
 // key, and whether the scope declares it at all. Both values are redacted when
 // the key is secret.
-func scopeValueOrUnset(eff *config.Effective, scope configScope, key string) (display string, raw any, set bool) {
+func scopeValueOrUnset(eff *config.Effective, scope configScope, key string, symbols presentation.Symbols) (display string, raw any, set bool) {
 	canon := canonicalConfigKey(key)
 	v, err := config.GetAtScope(eff, configScopeToConfig(scope), canon)
 	if err != nil {
 		return "", nil, false
 	}
-	return config.RedactString(canon, formatConfigValue(v.Raw)), config.RedactValue(canon, v.Raw), true
+	return config.RedactString(canon, formatConfigValue(v.Raw, symbols)), config.RedactValue(canon, v.Raw), true
 }
 
 // checkWritableScope enforces the schema's per-key writable scopes. The scope

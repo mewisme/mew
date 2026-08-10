@@ -137,7 +137,7 @@ func formatExplainHuman(r presentation.StaticRenderer, ex *resolver.PackageExpla
 	sym := settings.Symbols
 
 	var b strings.Builder
-	b.WriteString(ex.Package)
+	b.WriteString(r.StyledText(ex.Package, presentation.ValuePackage))
 	b.WriteByte('\n')
 
 	if ex.Conflict != nil {
@@ -146,12 +146,18 @@ func formatExplainHuman(r presentation.StaticRenderer, ex *resolver.PackageExpla
 	}
 
 	for _, d := range ex.Decisions {
-		arrow := presentation.RenderSymbolRole(sym, presentation.Theme{}, presentation.RoleArrow, false)
-		line := fmt.Sprintf("%s@%s %s %s (%s)", d.Package, d.Requested, arrow, d.Selected, d.Reason)
+		arrow := presentation.RenderSymbolRole(sym, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor)
+		line := fmt.Sprintf("%s@%s %s %s (%s)",
+			d.Package,
+			d.Requested,
+			arrow,
+			r.StyledText(d.Selected, presentation.ValueVersion),
+			d.Reason,
+		)
 		if detail := resolver.ReasonDetailFor(d.Reason); detail.Text != "" {
 			line += " " + sym.Separator + " " + detail.Text
 			if detail.Code != "" {
-				line += " [" + detail.Code + "]"
+				line += " [" + r.StyledText(detail.Code, presentation.ValueMuted) + "]"
 			}
 		}
 		if len(d.PeerProviders) > 0 {
@@ -163,15 +169,20 @@ func formatExplainHuman(r presentation.StaticRenderer, ex *resolver.PackageExpla
 		if len(d.Rejected) > 0 {
 			line += fmt.Sprintf(" rejected=%v", d.Rejected)
 		}
-		b.WriteString(r.PlainText(line))
+		b.WriteString(line)
 		b.WriteByte('\n')
 	}
 
 	if len(ex.Paths) > 0 {
 		b.WriteString("imported by:\n")
 		for _, p := range ex.Paths {
-			arrow := presentation.RenderSymbolRole(sym, presentation.Theme{}, presentation.RoleArrow, false)
-			b.WriteString(r.PlainText(fmt.Sprintf("  %s", strings.Join(p.Chain, " "+arrow+" "))))
+			arrow := presentation.RenderSymbolRole(sym, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor)
+			chain := make([]string, len(p.Chain))
+			for i, name := range p.Chain {
+				chain[i] = r.StyledText(name, presentation.ValuePackage)
+			}
+			b.WriteString("  ")
+			b.WriteString(strings.Join(chain, " "+arrow+" "))
 			b.WriteByte('\n')
 		}
 	}
@@ -179,8 +190,8 @@ func formatExplainHuman(r presentation.StaticRenderer, ex *resolver.PackageExpla
 }
 
 func formatExplainConflictTree(r presentation.StaticRenderer, tree resolver.ConflictTree) string {
-	sym := r.Settings().Symbols
-	arrow := presentation.RenderSymbolRole(sym, presentation.Theme{}, presentation.RoleArrow, false)
-	sep := sym.Separator
+	settings := r.Settings()
+	arrow := presentation.RenderSymbolRole(settings.Symbols, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor)
+	sep := settings.Symbols.Separator
 	return resolver.FormatConflictTreeWithSymbols(tree, arrow, sep)
 }

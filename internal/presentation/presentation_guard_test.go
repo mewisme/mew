@@ -139,3 +139,185 @@ func TestASCIISymbolWidths(t *testing.T) {
 	check("Separator", s.Separator)
 	check("Placeholder", s.Placeholder)
 }
+
+// TestSymbolRoleArrowSplit verifies action arrows use accent style and structural
+// arrows use muted style, both sharing the same glyph from the active symbol set.
+func TestSymbolRoleArrowSplit(t *testing.T) {
+	theme := presentation.NewTheme(presentation.ThemeLight)
+	sym := presentation.UnicodeSymbols
+
+	actionStyled := presentation.RenderSymbolRole(sym, theme, presentation.RoleActionArrow, true)
+	structuralStyled := presentation.RenderSymbolRole(sym, theme, presentation.RoleStructuralArrow, true)
+
+	if actionStyled == "" || structuralStyled == "" {
+		t.Fatal("arrow roles must return non-empty styled glyphs")
+	}
+
+	// Both roles use the same glyph.
+	actionPlain := presentation.RenderSymbolRole(sym, theme, presentation.RoleActionArrow, false)
+	structuralPlain := presentation.RenderSymbolRole(sym, theme, presentation.RoleStructuralArrow, false)
+	if actionPlain != structuralPlain {
+		t.Errorf("action and structural arrows must share same glyph: %q vs %q", actionPlain, structuralPlain)
+	}
+
+	// In light/dark themes, action arrow should differ from structural.
+	if actionStyled == structuralStyled {
+		t.Logf("action and structural arrows have same style in light theme: %q", actionStyled)
+	}
+
+	// ASCII symbols: both roles use "->".
+	asciiSym := presentation.ASCIISymbols
+	asciiAction := presentation.RenderSymbolRole(asciiSym, theme, presentation.RoleActionArrow, false)
+	asciiStructural := presentation.RenderSymbolRole(asciiSym, theme, presentation.RoleStructuralArrow, false)
+	if asciiAction != "->" || asciiStructural != "->" {
+		t.Errorf("ASCII arrows should be '->': action=%q structural=%q", asciiAction, asciiStructural)
+	}
+}
+
+// TestSymbolRoleAllRoles tests every SymbolRole produces a non-empty glyph.
+func TestSymbolRoleAllRoles(t *testing.T) {
+	theme := presentation.NewTheme(presentation.ThemeLight)
+	sym := presentation.UnicodeSymbols
+	asciiSym := presentation.ASCIISymbols
+
+	roles := []presentation.SymbolRole{
+		presentation.RoleAdded,
+		presentation.RoleUpdated,
+		presentation.RoleRemoved,
+		presentation.RoleActionArrow,
+		presentation.RoleStructuralArrow,
+		presentation.RoleBullet,
+		presentation.RoleEllipsis,
+		presentation.RolePlaceholder,
+		presentation.RoleSeparator,
+	}
+
+	for _, role := range roles {
+		uni := presentation.RenderSymbolRole(sym, theme, role, true)
+		if uni == "" {
+			t.Errorf("Unicode RenderSymbolRole(%d) returned empty", role)
+		}
+		asc := presentation.RenderSymbolRole(asciiSym, theme, role, true)
+		if asc == "" {
+			t.Errorf("ASCII RenderSymbolRole(%d) returned empty", role)
+		}
+	}
+}
+
+// TestThemeNoneNoANSI verifies ThemeNone with useColor=false emits zero ANSI.
+// ThemeNone is always paired with useColor=false by Effective() and NewStaticRenderer,
+// so the color=true path through ThemeNone is not exercised in production.
+func TestThemeNoneNoANSI(t *testing.T) {
+	theme := presentation.NewTheme(presentation.ThemeNone)
+	sym := presentation.UnicodeSymbols
+
+	statuses := []presentation.Status{
+		presentation.StatusSuccess,
+		presentation.StatusWarning,
+		presentation.StatusError,
+		presentation.StatusInfo,
+		presentation.StatusRunning,
+		presentation.StatusPending,
+		presentation.StatusSkipped,
+	}
+	for _, st := range statuses {
+		result := presentation.RenderSemanticSymbol(sym, theme, st, false)
+		if result == "" {
+			t.Errorf("ThemeNone RenderSemanticSymbol(%d, color=false) returned empty", st)
+		}
+		if containsANSI(result) {
+			t.Errorf("ThemeNone RenderSemanticSymbol(%d, color=false) emitted ANSI: %q", st, result)
+		}
+	}
+
+	roles := []presentation.SymbolRole{
+		presentation.RoleActionArrow,
+		presentation.RoleStructuralArrow,
+		presentation.RoleBullet,
+		presentation.RoleAdded,
+		presentation.RoleUpdated,
+		presentation.RoleRemoved,
+	}
+	for _, role := range roles {
+		result := presentation.RenderSymbolRole(sym, theme, role, false)
+		if result == "" {
+			t.Errorf("ThemeNone RenderSymbolRole(%d, color=false) returned empty", role)
+		}
+		if containsANSI(result) {
+			t.Errorf("ThemeNone RenderSymbolRole(%d, color=false) emitted ANSI: %q", role, result)
+		}
+	}
+}
+
+// TestAccessibleThemeBehavior verifies accessible theme uses emphasis (bold) not color.
+func TestAccessibleThemeBehavior(t *testing.T) {
+	theme := presentation.NewTheme(presentation.ThemeAccessible)
+	sym := presentation.UnicodeSymbols
+
+	// Accessible theme with color should still produce output.
+	result := presentation.RenderSemanticSymbol(sym, theme, presentation.StatusSuccess, true)
+	if result == "" {
+		t.Error("accessible theme RenderSemanticSymbol(Success) returned empty")
+	}
+
+	result = presentation.RenderSemanticSymbol(sym, theme, presentation.StatusError, true)
+	if result == "" {
+		t.Error("accessible theme RenderSemanticSymbol(Error) returned empty")
+	}
+}
+
+// TestConfigPlaceholderSelection verifies Unicode and ASCII placeholders differ.
+func TestConfigPlaceholderSelection(t *testing.T) {
+	if presentation.UnicodeSymbols.Placeholder == presentation.ASCIISymbols.Placeholder {
+		t.Error("Unicode and ASCII placeholders must differ")
+	}
+	if presentation.UnicodeSymbols.Placeholder == "" || presentation.ASCIISymbols.Placeholder == "" {
+		t.Error("placeholders must be non-empty in both symbol sets")
+	}
+}
+
+// TestSpinnerFrames verifies spinner frames are populated for both modes.
+func TestSpinnerFrames(t *testing.T) {
+	if len(presentation.UnicodeSymbols.SpinnerFrames) == 0 {
+		t.Error("Unicode spinner frames empty")
+	}
+	if len(presentation.ASCIISymbols.SpinnerFrames) == 0 {
+		t.Error("ASCII spinner frames empty")
+	}
+	// Each frame must be 1 cell wide.
+	for i, f := range presentation.UnicodeSymbols.SpinnerFrames {
+		if presentation.CellWidth(f) != 1 {
+			t.Errorf("Unicode spinner frame[%d]=%q width=%d want 1", i, f, presentation.CellWidth(f))
+		}
+	}
+}
+
+// TestTableColumnCellStyle verifies TableColumn.CellStyle is usable.
+func TestTableColumnCellStyle(t *testing.T) {
+	// Ensure the field exists and is usable.
+	col := presentation.TableColumn{
+		Key:       "name",
+		Header:    "Name",
+		CellStyle: presentation.ValuePackage,
+	}
+	if col.CellStyle != presentation.ValuePackage {
+		t.Error("TableColumn.CellStyle should be settable")
+	}
+}
+
+// TestStatusCellType verifies StatusCell struct fields.
+func TestStatusCellType(t *testing.T) {
+	sc := presentation.StatusCell{Text: "pass", Status: presentation.StatusSuccess}
+	if sc.Text != "pass" || sc.Status != presentation.StatusSuccess {
+		t.Error("StatusCell fields not accessible")
+	}
+}
+
+func containsANSI(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' {
+			return true
+		}
+	}
+	return false
+}

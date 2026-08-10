@@ -60,7 +60,7 @@ func TestRenderPlainFlagSkipsANSI(t *testing.T) {
 	if strings.Contains(out, "•") {
 		t.Fatalf("plain path used Unicode bullet:\n%s", out)
 	}
-	if !strings.Contains(out, "Hello") || !strings.Contains(out, "- item") {
+	if !strings.Contains(out, "Hello") || !strings.Contains(out, "* item") {
 		t.Fatalf("missing plain content:\n%s", out)
 	}
 }

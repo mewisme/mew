@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"github.com/mewisme/mew/internal/app"
 	"github.com/mewisme/mew/internal/apperr"
 	"github.com/mewisme/mew/internal/node"
+	"github.com/mewisme/mew/internal/presentation"
 	"github.com/mewisme/mew/internal/runtime/assets"
 	"github.com/mewisme/mew/internal/transform"
 )
@@ -275,104 +275,163 @@ func parseNodeMajor(version string) int {
 // ── Text renderer ────────────────────────────────────────────────────
 
 func renderResolveModuleText(cmd *cobra.Command, specifier, cwd, configPath string, result *diagResult) error {
-	w := cmd.OutOrStdout()
+	g := ownerFlags(cmd.Root())
+	r := g.mustStaticRenderer(cmd)
+	settings := r.Settings()
+	sym := settings.Symbols
 
-	fmt.Fprintf(w, "Specifier: %s\n", specifier)
-	fmt.Fprintf(w, "From:      %s\n", cwd)
+	var b strings.Builder
 
-	if configPath != "" {
-		fmt.Fprintf(w, "Tsconfig:  %s\n", configPath)
-	} else {
-		fmt.Fprintln(w, "Tsconfig:  (none found)")
+	// Header: key/value rows using semantic value kinds.
+	kvs := []presentation.KeyValue{
+		{Key: "Specifier", Value: specifier, Style: presentation.ValueCommand},
+		{Key: "From", Value: cwd, Style: presentation.ValuePath},
 	}
+	if configPath != "" {
+		kvs = append(kvs, presentation.KeyValue{Key: "Tsconfig", Value: configPath, Style: presentation.ValuePath})
+	} else {
+		kvs = append(kvs, presentation.KeyValue{Key: "Tsconfig", Value: "(none found)", Style: presentation.ValueMuted})
+	}
+	b.WriteString(r.KeyValues(kvs))
 
 	if result == nil {
-		fmt.Fprintln(w, "\nDiagnostic resolution unavailable (Node not found or script failed).")
-		_, _ = fmt.Fprint(w, "Showing tsconfig path analysis only.\n\n")
-		return renderStaticAnalysis(w, specifier, cwd, configPath)
+		b.WriteByte('\n')
+		b.WriteString(r.PlainText("Diagnostic resolution unavailable (Node not found or script failed)."))
+		b.WriteByte('\n')
+		b.WriteString(r.PlainText("Showing tsconfig path analysis only."))
+		b.WriteByte('\n')
+		b.WriteByte('\n')
+		analysis := renderStaticAnalysis(r, specifier, cwd, configPath)
+		b.WriteString(analysis)
+		return writeStaticOut(cmd, b.String())
 	}
 
-	// Render trace.
-	fmt.Fprintln(w, "\nResolution trace:")
+	// Resolution trace header.
+	b.WriteString("\n\n")
+	b.WriteString(r.PlainText("Resolution trace:"))
+
 	for i, step := range result.Trace {
-		fmt.Fprintf(w, "  %d. %-20s — %s", i+1, step.Stage, step.Outcome)
+		b.WriteByte('\n')
+		// Step number and stage.
+		prefix := fmt.Sprintf("  %d. %s", i+1, step.Stage)
+		b.WriteString(r.PlainText(prefix))
+
+		// Status symbol and outcome.
+		status := traceOutcomeStatus(step.Outcome)
+		b.WriteString("  ")
+		b.WriteString(r.Symbol(status))
+		b.WriteByte(' ')
+		b.WriteString(step.Outcome)
+
+		// Per-outcome detail rendering.
 		switch step.Outcome {
 		case "resolved":
 			if step.Substituted != "" {
-				fmt.Fprintf(w, " (%s → %s)", step.Resolved, step.Substituted)
+				b.WriteString(fmt.Sprintf(" (%s %s %s)",
+					step.Resolved,
+					presentation.RenderSymbolRole(sym, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor),
+					step.Substituted))
 			} else if step.Resolved != "" {
-				fmt.Fprintf(w, " (%s)", step.Resolved)
+				b.WriteString(fmt.Sprintf(" (%s)", step.Resolved))
 			}
 			if step.Format != "" {
-				fmt.Fprintf(w, " [%s]", step.Format)
+				b.WriteString(fmt.Sprintf(" [%s]", step.Format))
 			}
 			if step.Pattern != "" {
-				fmt.Fprintf(w, "\n      pattern: %s", step.Pattern)
+				b.WriteString(fmt.Sprintf("\n      pattern: %s", step.Pattern))
 			}
 			if len(step.Targets) > 0 {
-				fmt.Fprintf(w, "\n      targets: %s", strings.Join(step.Targets, ", "))
+				b.WriteString(fmt.Sprintf("\n      targets: %s", strings.Join(step.Targets, ", ")))
 			}
 		case "miss":
 			if step.Error != "" {
-				fmt.Fprintf(w, " (%s)", step.Error)
+				b.WriteString(fmt.Sprintf(" (%s)", step.Error))
 			}
 		case "error":
 			if step.Error != "" {
-				fmt.Fprintf(w, " — %s", step.Error)
+				b.WriteString(fmt.Sprintf(" %s %s", sym.Separator, step.Error))
 			}
 			if step.Code != "" {
-				fmt.Fprintf(w, " [%s]", step.Code)
+				b.WriteString(fmt.Sprintf(" [%s]", step.Code))
 			}
 		case "skipped":
 			if step.Reason != "" {
-				fmt.Fprintf(w, " (%s)", step.Reason)
+				b.WriteString(fmt.Sprintf(" (%s)", step.Reason))
 			}
 		}
 		if step.Note != "" {
-			fmt.Fprintf(w, "\n      note: %s", step.Note)
+			b.WriteString(fmt.Sprintf("\n      note: %s", step.Note))
 		}
 		if step.PnPRoot != "" {
-			fmt.Fprintf(w, "\n      pnp root: %s", step.PnPRoot)
+			b.WriteString(fmt.Sprintf("\n      pnp root: %s", step.PnPRoot))
 		}
-		fmt.Fprintln(w)
 	}
 
-	// Render final result.
-	fmt.Fprintln(w)
+	// Final result.
+	b.WriteByte('\n')
+	b.WriteByte('\n')
 	if result.Resolved && result.Target != nil {
-		fmt.Fprintf(w, "Resolved: %s\n", result.Target.URL)
+		resultKVs := []presentation.KeyValue{
+			{Key: "Resolved", Value: result.Target.URL, Style: presentation.ValuePackage},
+		}
 		if result.Target.Path != "" {
-			fmt.Fprintf(w, "Path:     %s\n", result.Target.Path)
+			resultKVs = append(resultKVs, presentation.KeyValue{Key: "Path", Value: result.Target.Path, Style: presentation.ValuePath})
 		}
 		if result.Target.Format != "" {
-			fmt.Fprintf(w, "Format:   %s\n", result.Target.Format)
+			resultKVs = append(resultKVs, presentation.KeyValue{Key: "Format", Value: result.Target.Format})
 		}
+		b.WriteString(r.KeyValues(resultKVs))
 	} else if result.Error != nil {
-		fmt.Fprintf(w, "Error:    [%s] %s\n", result.Error.Code, result.Error.Message)
+		b.WriteString(r.Status(presentation.StatusLine{
+			Status: presentation.StatusError,
+			Text:   fmt.Sprintf("[%s] %s", result.Error.Code, result.Error.Message),
+		}))
 	}
 
 	if result.PnP != nil && result.PnP.Root != "" {
-		fmt.Fprintf(w, "PnP root: %s\n", result.PnP.Root)
+		b.WriteByte('\n')
+		b.WriteString(r.KeyValues([]presentation.KeyValue{
+			{Key: "PnP root", Value: result.PnP.Root, Style: presentation.ValuePath},
+		}))
 	}
 
-	return nil
+	return writeStaticOut(cmd, b.String())
+}
+
+// traceOutcomeStatus maps a diagnostic step outcome to a presentation status.
+func traceOutcomeStatus(outcome string) presentation.Status {
+	switch outcome {
+	case "resolved":
+		return presentation.StatusSuccess
+	case "error":
+		return presentation.StatusError
+	case "miss":
+		return presentation.StatusWarning
+	case "skipped":
+		return presentation.StatusSkipped
+	default:
+		return presentation.StatusInfo
+	}
 }
 
 // renderStaticAnalysis prints tsconfig path analysis without Node resolution.
-func renderStaticAnalysis(w io.Writer, specifier, cwd, configPath string) error {
+func renderStaticAnalysis(r presentation.StaticRenderer, specifier, cwd, configPath string) string {
+	settings := r.Settings()
+	sym := settings.Symbols
+
 	if configPath == "" {
-		fmt.Fprintln(w, "No tsconfig paths configured. Resolution falls through to Node defaults.")
-		return nil
+		return r.PlainText("No tsconfig paths configured. Resolution falls through to Node defaults.\n")
 	}
 
 	chain, err := transform.LoadTsconfigChain(configPath)
 	if err != nil {
-		return apperr.Wrap(apperr.TransformConfigParse, "resolve-module", configPath, err)
+		// Return the error as plain text since we're already in a fallback path.
+		return fmt.Sprintf("Error loading tsconfig: %v\n", err)
 	}
 
 	opts, err := transform.NormalizeOptions(chain)
 	if err != nil {
-		return apperr.Wrap(apperr.TransformConfigOption, "resolve-module", configPath, err)
+		return fmt.Sprintf("Error normalizing tsconfig options: %v\n", err)
 	}
 
 	baseDir := filepath.Dir(configPath)
@@ -380,24 +439,31 @@ func renderStaticAnalysis(w io.Writer, specifier, cwd, configPath string) error 
 	if baseURL == "" {
 		baseURL = "."
 	}
-	fmt.Fprintf(w, "BaseUrl:   %s", baseURL)
+
+	var b strings.Builder
+	baseDisplay := baseURL
 	if !filepath.IsAbs(baseURL) {
 		resolved := filepath.Join(baseDir, baseURL)
-		fmt.Fprintf(w, "  (resolved: %s)", resolved)
+		baseDisplay = fmt.Sprintf("%s  (resolved: %s)", baseURL, resolved)
 	}
-	fmt.Fprintln(w)
+	b.WriteString(r.KeyValues([]presentation.KeyValue{
+		{Key: "BaseUrl", Value: baseDisplay, Style: presentation.ValuePath},
+	}))
 
 	if len(opts.Paths) == 0 {
-		fmt.Fprintln(w, "Paths:     (none)")
-		return nil
+		b.WriteByte('\n')
+		b.WriteString(r.PlainText("Paths:     (none)"))
+		return b.String()
 	}
 
-	fmt.Fprintln(w, "Paths:")
+	b.WriteByte('\n')
+	b.WriteString(r.PlainText("Paths:"))
+	arrow := presentation.RenderSymbolRole(sym, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor)
 	for _, pm := range opts.PathMappings {
-		fmt.Fprintf(w, "  %s → %s\n", pm.Pattern, strings.Join(pm.Targets, ", "))
+		b.WriteString(fmt.Sprintf("\n  %s %s %s", pm.Pattern, arrow, strings.Join(pm.Targets, ", ")))
 	}
 
-	fmt.Fprintf(w, "\nMatching %q against path patterns:\n", specifier)
+	b.WriteString(fmt.Sprintf("\n\nMatching %q against path patterns:\n", specifier))
 	matched := false
 	for _, pm := range opts.PathMappings {
 		captures := matchPathPattern(specifier, pm.Pattern)
@@ -405,7 +471,7 @@ func renderStaticAnalysis(w io.Writer, specifier, cwd, configPath string) error 
 			continue
 		}
 		matched = true
-		fmt.Fprintf(w, "  %s matched (captures: %v)\n", pm.Pattern, captures)
+		b.WriteString(fmt.Sprintf("  %s matched (captures: %v)\n", pm.Pattern, captures))
 		resolveBase := baseDir
 		if baseURL != "." && baseURL != "" {
 			resolveBase = filepath.Join(baseDir, baseURL)
@@ -416,19 +482,22 @@ func renderStaticAnalysis(w io.Writer, specifier, cwd, configPath string) error 
 				resolved = strings.Replace(resolved, "*", cap, 1)
 			}
 			full := filepath.Join(resolveBase, resolved)
-			fmt.Fprintf(w, "    → %s\n", full)
+			b.WriteString(fmt.Sprintf("    %s %s\n", arrow, full))
 		}
 	}
 	if !matched {
-		fmt.Fprintln(w, "  (no patterns matched)")
+		b.WriteString(r.PlainText("  (no patterns matched)\n"))
 	}
 
 	pnpRoot := findPnpRoot(cwd)
 	if pnpRoot != "" {
-		fmt.Fprintf(w, "\nPnP root:  %s\n", pnpRoot)
+		b.WriteByte('\n')
+		b.WriteString(r.KeyValues([]presentation.KeyValue{
+			{Key: "PnP root", Value: pnpRoot, Style: presentation.ValuePath},
+		}))
 	}
 
-	return nil
+	return b.String()
 }
 
 // ── JSON renderer ─────────────────────────────────────────────────────

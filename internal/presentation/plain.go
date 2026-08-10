@@ -48,7 +48,7 @@ func (r *plainRenderer) Notice(n Notice) string {
 }
 
 func (r *plainRenderer) Hint(h Hint) string {
-	arrow := RenderSymbolRole(r.settings.Symbols, Theme{}, RoleArrow, false)
+	arrow := RenderSymbolRole(r.settings.Symbols, Theme{}, RoleActionArrow, false)
 	if arrow == "" {
 		return h.Message
 	}
@@ -105,6 +105,10 @@ func (r *plainRenderer) PlainText(s string) string { return s }
 
 func (r *plainRenderer) Symbol(st Status) string {
 	return statusSymbol(r.settings.Symbols, st)
+}
+
+func (r *plainRenderer) StyledText(text string, kind ValueKind) string {
+	return styleValue(text, kind, false, Theme{})
 }
 
 func statusSymbol(s Symbols, st Status) string {
@@ -260,11 +264,7 @@ func formatPackageDeltasWithOptions(deltas []PackageDelta, settings EffectiveSet
 }
 
 func formatDeltaTruncationNotice(omitted int, color bool, theme Theme, settings EffectiveSettings) string {
-	// Structural arrow in truncation notice uses muted.
-	arrow := settings.Symbols.Arrow
-	if color {
-		arrow = applyStyle(theme.Muted, arrow, true)
-	}
+	arrow := RenderSymbolRole(settings.Symbols, theme, RoleStructuralArrow, color)
 	msg := fmt.Sprintf("%s %d additional package changes are not shown.", arrow, omitted)
 	msg += "\n  Run `" + settings.BinName() + " plan` for the complete mutation plan."
 	if color {
@@ -335,10 +335,7 @@ func formatFlatPackageDeltas(deltas []PackageDelta, settings EffectiveSettings, 
 			}
 			b.WriteString(from)
 			b.WriteByte(' ')
-			arrow := sym.Arrow
-			if color {
-				arrow = applyStyle(theme.Muted, arrow, true)
-			}
+			arrow := RenderSymbolRole(sym, theme, RoleStructuralArrow, color)
 			b.WriteString(arrow)
 			b.WriteByte(' ')
 			b.WriteString(to)
@@ -389,7 +386,7 @@ func formatSpecifierDeltas(deltas []SpecifierDelta, settings EffectiveSettings, 
 		default:
 			b.WriteString(d.Before)
 			b.WriteByte(' ')
-			b.WriteString(RenderSymbolRole(sym, theme, RoleArrow, color))
+			b.WriteString(RenderSymbolRole(sym, theme, RoleStructuralArrow, color))
 			b.WriteByte(' ')
 			b.WriteString(d.After)
 		}

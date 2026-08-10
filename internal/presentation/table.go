@@ -12,16 +12,47 @@ func formatTable(m TableModel, settings EffectiveSettings, color bool, theme The
 		return ""
 	}
 	rows := append([]map[string]string(nil), m.Rows...)
-	sort.SliceStable(rows, func(i, j int) bool {
-		a := rowSortKey(rows[i], m.Columns)
-		b := rowSortKey(rows[j], m.Columns)
-		return a < b
-	})
+	statuses := append([]map[string]StatusCell(nil), m.RowStatuses...)
 
-	if settings.Width < stackedTableThreshold || settings.Accessible {
-		return formatStackedTable(m.Columns, rows, settings, color, theme)
+	// Sort rows; if RowStatuses present, permute them in tandem.
+	if len(statuses) > 0 {
+		type indexed struct {
+			row    map[string]string
+			status map[string]StatusCell
+		}
+		items := make([]indexed, len(rows))
+		for i := range rows {
+			st := map[string]StatusCell(nil)
+			if i < len(statuses) {
+				st = statuses[i]
+			}
+			items[i] = indexed{row: rows[i], status: st}
+		}
+		sort.SliceStable(items, func(i, j int) bool {
+			a := rowSortKey(items[i].row, m.Columns)
+			b := rowSortKey(items[j].row, m.Columns)
+			return a < b
+		})
+		for i := range items {
+			rows[i] = items[i].row
+			if i < len(statuses) {
+				statuses[i] = items[i].status
+			}
+		}
+	} else {
+		sort.SliceStable(rows, func(i, j int) bool {
+			a := rowSortKey(rows[i], m.Columns)
+			b := rowSortKey(rows[j], m.Columns)
+			return a < b
+		})
 	}
-	return formatWideTable(m.Columns, rows, settings, color, theme)
+
+	// Build a model copy with sorted rows/statuses for cell resolution.
+	sorted := TableModel{Columns: m.Columns, Rows: rows, RowStatuses: statuses}
+	if settings.Width < stackedTableThreshold || settings.Accessible {
+		return formatStackedTable(sorted, settings, color, theme)
+	}
+	return formatWideTable(sorted, settings, color, theme)
 }
 
 func rowSortKey(row map[string]string, cols []TableColumn) string {
@@ -32,7 +63,9 @@ func rowSortKey(row map[string]string, cols []TableColumn) string {
 	return strings.Join(parts, "\x00")
 }
 
-func formatStackedTable(cols []TableColumn, rows []map[string]string, settings EffectiveSettings, color bool, theme Theme) string {
+func formatStackedTable(m TableModel, settings EffectiveSettings, color bool, theme Theme) string {
+	cols := m.Columns
+	rows := m.Rows
 	primary := cols[0]
 	for _, c := range cols {
 		if c.Primary {
@@ -56,14 +89,16 @@ func formatStackedTable(cols []TableColumn, rows []map[string]string, settings E
 			b.WriteString("  ")
 			b.WriteString(applyStyle(theme.Label, strings.ToLower(c.Header), color))
 			b.WriteString("  ")
-			b.WriteString(styleValue(row[c.Key], ValuePlain, color, theme))
+			b.WriteString(tableCellValue(row[c.Key], c.CellStyle, i, c.Key, m, color, theme))
 		}
 	}
 	_ = settings
 	return b.String()
 }
 
-func formatWideTable(cols []TableColumn, rows []map[string]string, settings EffectiveSettings, color bool, theme Theme) string {
+func formatWideTable(m TableModel, settings EffectiveSettings, color bool, theme Theme) string {
+	cols := m.Columns
+	rows := m.Rows
 	widths := make([]int, len(cols))
 	for i, c := range cols {
 		widths[i] = CellWidth(c.Header)
@@ -105,7 +140,7 @@ func formatWideTable(cols []TableColumn, rows []map[string]string, settings Effe
 			}
 			raw := row[c.Key]
 			cell := fitCell(raw, widths[i], c.Truncate, settings.Symbols.Ellipsis)
-			styled := styleValue(cell, ValuePlain, color, theme)
+			styled := tableCellValue(cell, c.CellStyle, ri, c.Key, m, color, theme)
 			b.WriteString(padCell(styled, cell, widths[i], c.Align))
 		}
 	}
@@ -168,6 +203,17 @@ func fitCell(s string, width int, policy TruncatePolicy, ellipsis string) string
 	default:
 		return MiddleTruncate(s, width, ellipsis)
 	}
+}
+
+// tableCellValue resolves the styled form of a table cell, checking for
+// row-level StatusCell metadata first, falling back to column-level ValueKind.
+func tableCellValue(val string, colKind ValueKind, rowIdx int, colKey string, m TableModel, color bool, theme Theme) string {
+	if rowIdx < len(m.RowStatuses) {
+		if sc, ok := m.RowStatuses[rowIdx][colKey]; ok {
+			return RenderSemanticSymbol(Symbols{}, theme, sc.Status, color) + " " + applyStyle(theme.Value, sc.Text, color)
+		}
+	}
+	return styleValue(val, colKind, color, theme)
 }
 
 func padCell(styled, plain string, width int, align ColumnAlign) string {

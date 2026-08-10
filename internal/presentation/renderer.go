@@ -14,6 +14,8 @@ type StaticRenderer interface {
 	PlainText(string) string
 	// Symbol returns a status glyph, colored when the theme supports it.
 	Symbol(status Status) string
+	// StyledText returns text styled according to the given ValueKind.
+	StyledText(text string, kind ValueKind) string
 	Settings() EffectiveSettings
 }
 

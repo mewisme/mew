@@ -48,8 +48,8 @@ var UnicodeSymbols = Symbols{
 	Removed:  "-",
 	Ellipsis: "…",
 
-	Placeholder: "—",
-	Separator: "—",
+	Placeholder:   "—",
+	Separator:     "—",
 	SpinnerFrames: unicodeActivityFrames,
 }
 
@@ -69,8 +69,8 @@ var ASCIISymbols = Symbols{
 	Removed:  "-",
 	Ellipsis: "...",
 
-	Placeholder: "-",
-	Separator: "-",
+	Placeholder:   "-",
+	Separator:     "-",
 	SpinnerFrames: asciiActivityFrames,
 }
 

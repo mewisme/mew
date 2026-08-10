@@ -26,28 +26,29 @@ func MapEnvironmentPrepared(
 	view := ExecutionPrepView{Title: runningTitle(command)}
 	source, env, network, integrity := mapPreparedLabels(ev)
 
-	addRow := func(key, value string) {
+	addRow := func(key, value string, kind ValueKind) {
 		if value != "" {
 			view.Rows = append(view.Rows, KeyValue{
 				Key:   key,
 				Value: value,
+				Style: kind,
 			})
 		}
 	}
 
-	addRow("Source", source)
+	addRow("Source", source, ValuePlain)
 
 	if command != "" && source != "project" {
-		addRow("Package", command)
+		addRow("Package", command, ValuePackage)
 	}
 
-	addRow("Environment", env)
-	addRow("Network", network)
-	addRow("Integrity", integrity)
+	addRow("Environment", env, ValuePlain)
+	addRow("Network", network, ValuePlain)
+	addRow("Integrity", integrity, ValuePlain)
 
 	if debug {
-		addRow("Identity", shortDigest(ev.IdentityDigest, ellipsis))
-		addRow("Graph", shortDigest(ev.GraphDigest, ellipsis))
+		addRow("Identity", shortDigest(ev.IdentityDigest, ellipsis), ValueMuted)
+		addRow("Graph", shortDigest(ev.GraphDigest, ellipsis), ValueMuted)
 	}
 
 	return view
@@ -62,7 +63,7 @@ func ProjectExecPrep(command, packageName string) ExecutionPrepView {
 	view := ExecutionPrepView{
 		Title: runningTitle(command),
 		Rows: []KeyValue{
-			{Key: "Source", Value: "project"},
+			{Key: "Source", Value: "project", Style: ValuePlain},
 		},
 	}
 
@@ -70,6 +71,7 @@ func ProjectExecPrep(command, packageName string) ExecutionPrepView {
 		view.Rows = append(view.Rows, KeyValue{
 			Key:   "Package",
 			Value: packageName,
+			Style: ValuePackage,
 		})
 	}
 
@@ -157,9 +159,13 @@ func RenderExecutionPrep(view ExecutionPrepView, settings EffectiveSettings) str
 		}
 	}
 
-	arrow := RenderSymbolRole(settings.Symbols, theme, RoleArrow, settings.UseColor)
+	arrow := RenderSymbolRole(settings.Symbols, theme, RoleActionArrow, settings.UseColor)
 
-	title := arrow + " " + strings.TrimSpace(view.Title)
+	titleText := strings.TrimSpace(view.Title)
+	if settings.UseColor {
+		titleText = applyStyle(theme.Header, titleText, true)
+	}
+	title := arrow + " " + titleText
 	lines = append(lines, title)
 
 	if len(view.Rows) > 0 {
@@ -181,9 +187,10 @@ func renderPrepRows(rows []KeyValue, settings EffectiveSettings, theme Theme) []
 		if settings.UseColor {
 			key = applyStyle(theme.Faint, key, true)
 		}
+		val := styleValue(row.Value, row.Style, settings.UseColor, theme)
 
 		lines = append(lines,
-			fmt.Sprintf(" %s  %s", key, row.Value),
+			fmt.Sprintf(" %s  %s", key, val),
 		)
 	}
 

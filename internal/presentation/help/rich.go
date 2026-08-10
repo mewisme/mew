@@ -77,7 +77,7 @@ func RenderRich(md string, opts RenderOptions) (string, error) {
 		}
 		if m := reUL.FindStringSubmatch(line); m != nil {
 			text := formatInline(m[2], opts)
-			out = append(out, wrapPrefixedStyled("  - ", text, width, theme.Primary, nil)...)
+			out = append(out, wrapPrefixedStyled("  "+opts.Symbols.Bullet+" ", text, width, theme.Primary, nil)...)
 			continue
 		}
 		if m := reOL.FindStringSubmatch(line); m != nil {

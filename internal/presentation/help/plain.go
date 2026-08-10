@@ -26,6 +26,10 @@ type RenderOptions struct {
 // Render selects plain or rich Markdown rendering.
 func Render(md string, opts RenderOptions) (string, error) {
 	opts.Width = presentation.ClampWidth(opts.Width)
+	// Default to ASCII symbols when none provided (zero-value guard).
+	if opts.Symbols.Bullet == "" {
+		opts.Symbols = presentation.ASCIISymbols
+	}
 	if opts.Plain || opts.Accessible || !opts.UseColor {
 		return RenderPlain(md, opts), nil
 	}
@@ -109,7 +113,7 @@ func RenderPlain(md string, opts RenderOptions) string {
 		}
 		if m := reUL.FindStringSubmatch(line); m != nil {
 			text := formatInline(m[2], opts)
-			out = append(out, wrapPrefixed("  - ", text, width)...)
+			out = append(out, wrapPrefixed("  "+opts.Symbols.Bullet+" ", text, width)...)
 			continue
 		}
 		if m := reOL.FindStringSubmatch(line); m != nil {

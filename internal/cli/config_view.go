@@ -20,7 +20,6 @@ import (
 // detection, and scope conversion have exactly one implementation each. The
 // models carry resolved data only: they read no files and resolve no config.
 
-
 // ── scope conversion ──────────────────────────────────────────
 
 // configScopeToConfig maps the CLI scope flag onto the config package scope.
@@ -128,11 +127,11 @@ func (v configEntryView) json() configEntryJSON {
 
 // newConfigEntryView assembles one row from a resolved value. Redaction, type
 // lookup, and source naming all happen here rather than at each call site.
-func newConfigEntryView(key string, raw any, src config.Source, path string, scope configScope, configured bool) configEntryView {
+func newConfigEntryView(key string, raw any, src config.Source, path string, scope configScope, configured bool, symbols presentation.Symbols) configEntryView {
 	spec := config.KeySpec(key)
 	view := configEntryView{
 		Key:        key,
-		Value:      config.RedactString(key, formatConfigValue(raw)),
+		Value:      config.RedactString(key, formatConfigValue(raw, symbols)),
 		Raw:        config.RedactValue(key, raw),
 		Scope:      scope,
 		Source:     displayConfigSource(src),
@@ -195,7 +194,7 @@ func (v configGetView) json() configGetJSON {
 
 // configGetNotSetView builds a configGetView for a key absent at the requested
 // raw scope, so the JSON shape stays stable for consumers that parse stdout.
-func configGetNotSetView(eff *config.Effective, key string, scope configScope) configGetView {
+func configGetNotSetView(eff *config.Effective, key string, scope configScope, symbols presentation.Symbols) configGetView {
 	canon := key
 	if c := config.CanonicalKey(key); c != "" {
 		canon = c
@@ -203,7 +202,7 @@ func configGetNotSetView(eff *config.Effective, key string, scope configScope) c
 	spec := config.KeySpec(canon)
 	entry := configEntryView{
 		Key:        canon,
-		Value:      config.RedactString(canon, formatConfigValue(nil)),
+		Value:      config.RedactString(canon, formatConfigValue(nil, symbols)),
 		Raw:        config.RedactValue(canon, nil),
 		Scope:      scope,
 		Configured: false,
@@ -220,7 +219,7 @@ func configGetNotSetView(eff *config.Effective, key string, scope configScope) c
 	if ev, err := config.GetEffective(eff, canon); err == nil {
 		view.EffectiveKnown = true
 		view.EffectiveRaw = config.RedactValue(canon, ev.Raw)
-		view.EffectiveValue = config.RedactString(canon, formatConfigValue(ev.Raw))
+		view.EffectiveValue = config.RedactString(canon, formatConfigValue(ev.Raw, symbols))
 		view.EffectiveSrc = displayConfigSource(ev.Source)
 		view.Entry.Source = displayConfigSource(ev.Source)
 		view.Entry.IsDefault = ev.Source == config.SourceDefaults
@@ -426,7 +425,7 @@ type configMigrationApplyJSON struct {
 // a typed not-set error rather than a silent fallback to the default or to
 // whichever layer happens to win. The effective value is resolved separately
 // and reported alongside.
-func resolveConfigGet(eff *config.Effective, key string, scope configScope) (configGetView, error) {
+func resolveConfigGet(eff *config.Effective, key string, scope configScope, symbols presentation.Symbols) (configGetView, error) {
 	canon := key
 	if c := config.CanonicalKey(key); c != "" {
 		canon = c
@@ -441,7 +440,7 @@ func resolveConfigGet(eff *config.Effective, key string, scope configScope) (con
 	}
 
 	view := configGetView{
-		Entry: newConfigEntryView(canon, v.Raw, v.Source, v.Path, scope, true),
+		Entry: newConfigEntryView(canon, v.Raw, v.Source, v.Path, scope, true, symbols),
 		Spec:  config.KeySpec(canon),
 	}
 	// The effective winner is reported next to the raw value so callers can see
@@ -449,7 +448,7 @@ func resolveConfigGet(eff *config.Effective, key string, scope configScope) (con
 	if ev, eerr := config.GetEffective(eff, canon); eerr == nil {
 		view.EffectiveKnown = true
 		view.EffectiveRaw = config.RedactValue(canon, ev.Raw)
-		view.EffectiveValue = config.RedactString(canon, formatConfigValue(ev.Raw))
+		view.EffectiveValue = config.RedactString(canon, formatConfigValue(ev.Raw, symbols))
 		view.EffectiveSrc = displayConfigSource(ev.Source)
 	}
 	return view, nil
@@ -477,7 +476,7 @@ func (o configListOptions) matchesPrefix(key string) bool {
 // Raw scopes list what the scope itself declares, taken from its retained
 // layer. Schema defaults are added only under --defaults, and are marked
 // unconfigured so a displayed default never reads as a value someone set.
-func resolveConfigList(eff *config.Effective, scope configScope, opts configListOptions) []configEntryView {
+func resolveConfigList(eff *config.Effective, scope configScope, opts configListOptions, symbols presentation.Symbols) []configEntryView {
 	var out []configEntryView
 
 	// Effective already spans every layer including defaults, so --defaults has
@@ -491,12 +490,12 @@ func resolveConfigList(eff *config.Effective, scope configScope, opts configList
 			if err != nil {
 				continue
 			}
-			if opts.changed && isSchemaDefaultValue(e.Key, v.Raw) {
+			if opts.changed && isSchemaDefaultValue(e.Key, v.Raw, symbols) {
 				continue
 			}
 			// A row is "configured" when a real layer declared it; a schema
 			// fallback is displayed but was set by nobody.
-			out = append(out, newConfigEntryView(e.Key, v.Raw, v.Source, v.Path, scope, v.Source != config.SourceDefaults))
+			out = append(out, newConfigEntryView(e.Key, v.Raw, v.Source, v.Path, scope, v.Source != config.SourceDefaults, symbols))
 		}
 		return sortConfigEntries(out)
 	}
@@ -510,11 +509,11 @@ func resolveConfigList(eff *config.Effective, scope configScope, opts configList
 		if err != nil {
 			continue
 		}
-		if opts.changed && isSchemaDefaultValue(e.Key, v.Raw) {
+		if opts.changed && isSchemaDefaultValue(e.Key, v.Raw, symbols) {
 			continue
 		}
 		seen[e.Key] = true
-		out = append(out, newConfigEntryView(e.Key, v.Raw, v.Source, v.Path, scope, true))
+		out = append(out, newConfigEntryView(e.Key, v.Raw, v.Source, v.Path, scope, true, symbols))
 	}
 
 	if opts.inclDefaults {
@@ -531,7 +530,7 @@ func resolveConfigList(eff *config.Effective, scope configScope, opts configList
 			if spec == nil {
 				continue
 			}
-			out = append(out, newConfigEntryView(key, spec.Default, config.SourceDefaults, "defaults", scope, false))
+			out = append(out, newConfigEntryView(key, spec.Default, config.SourceDefaults, "defaults", scope, false, symbols))
 		}
 	}
 	return sortConfigEntries(out)
@@ -540,12 +539,12 @@ func resolveConfigList(eff *config.Effective, scope configScope, opts configList
 // isSchemaDefaultValue reports whether raw equals the schema default for key.
 // Comparison is on the formatted form because a JSONC number and a Go int
 // default describe the same value in different types.
-func isSchemaDefaultValue(key string, raw any) bool {
+func isSchemaDefaultValue(key string, raw any, symbols presentation.Symbols) bool {
 	spec := config.KeySpec(key)
 	if spec == nil {
 		return false
 	}
-	return formatConfigValue(raw) == formatConfigValue(spec.Default)
+	return formatConfigValue(raw, symbols) == formatConfigValue(spec.Default, symbols)
 }
 
 // sortConfigEntries orders rows by schema group then canonical key, so output
@@ -577,7 +576,7 @@ func sortConfigEntries(entries []configEntryView) []configEntryView {
 // The chain comes from config.Explain, which replays the retained layers, so
 // a value shadowed by a higher layer still appears at its own rung and exactly
 // one rung is marked effective.
-func resolveConfigExplain(eff *config.Effective, key string, scope configScope) (configResolutionView, error) {
+func resolveConfigExplain(eff *config.Effective, key string, scope configScope, symbols presentation.Symbols) (configResolutionView, error) {
 	chain, err := config.Explain(eff, key)
 	if err != nil {
 		return configResolutionView{}, err
@@ -593,7 +592,7 @@ func resolveConfigExplain(eff *config.Effective, key string, scope configScope) 
 
 	view := configResolutionView{
 		Key:       canon,
-		Effective: newConfigEntryView(canon, winner.Raw, winner.Source, winner.Path, configScopeEffective, true),
+		Effective: newConfigEntryView(canon, winner.Raw, winner.Source, winner.Path, configScopeEffective, true, symbols),
 		Spec:      config.KeySpec(canon),
 		LegacyKey: config.LegacyKey(canon),
 		Layers:    make([]configLayerView, 0, len(chain)),
@@ -601,7 +600,7 @@ func resolveConfigExplain(eff *config.Effective, key string, scope configScope) 
 	for _, rung := range chain {
 		view.Layers = append(view.Layers, configLayerView{
 			Source:    displayConfigSource(rung.Source),
-			Value:     config.RedactString(canon, formatConfigValue(rung.Raw)),
+			Value:     config.RedactString(canon, formatConfigValue(rung.Raw, symbols)),
 			Raw:       config.RedactValue(canon, rung.Raw),
 			Path:      rung.Path,
 			Effective: rung.Effective,
@@ -612,7 +611,7 @@ func resolveConfigExplain(eff *config.Effective, key string, scope configScope) 
 	// the answer.
 	if scope != configScopeEffective {
 		if sv, serr := config.GetAtScope(eff, configScopeToConfig(scope), canon); serr == nil {
-			sel := newConfigEntryView(canon, sv.Raw, sv.Source, sv.Path, scope, true)
+			sel := newConfigEntryView(canon, sv.Raw, sv.Source, sv.Path, scope, true, symbols)
 			view.Selected = &sel
 		}
 	}
@@ -622,14 +621,15 @@ func resolveConfigExplain(eff *config.Effective, key string, scope configScope) 
 // ── shared formatting ─────────────────────────────────────────
 
 // formatConfigValue renders a config value for display. Structured output uses
-// the raw value; this is the human form.
-func formatConfigValue(v any) string {
+// the raw value; this is the human form. The symbols parameter selects the
+// active placeholder glyph (Unicode or ASCII).
+func formatConfigValue(v any, symbols presentation.Symbols) string {
 	switch t := v.(type) {
 	case nil:
-		return presentation.UnicodeSymbols.Placeholder
+		return symbols.Placeholder
 	case string:
 		if t == "" {
-			return presentation.UnicodeSymbols.Placeholder
+			return symbols.Placeholder
 		}
 		return t
 	case bool:

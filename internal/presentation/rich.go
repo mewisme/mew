@@ -52,7 +52,7 @@ func (r *richRenderer) Notice(n Notice) string {
 }
 
 func (r *richRenderer) Hint(h Hint) string {
-	arrow := RenderSymbolRole(r.settings.Symbols, r.theme, RoleArrow, r.settings.UseColor)
+	arrow := RenderSymbolRole(r.settings.Symbols, r.theme, RoleActionArrow, r.settings.UseColor)
 	return arrow + " " + h.Message
 }
 
@@ -107,4 +107,8 @@ func (r *richRenderer) PlainText(s string) string { return s }
 
 func (r *richRenderer) Symbol(st Status) string {
 	return RenderSemanticSymbol(r.settings.Symbols, r.theme, st, r.settings.UseColor)
+}
+
+func (r *richRenderer) StyledText(text string, kind ValueKind) string {
+	return styleValue(text, kind, r.settings.UseColor, r.theme)
 }
