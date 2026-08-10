@@ -1328,3 +1328,312 @@ func TestCacheKeyVariesByMapRoot(t *testing.T) {
 		t.Fatal("cache keys must differ when mapRoot differs")
 	}
 }
+
+// ── Module format resolution: tsconfig module vs per-file format ──
+
+func TestFormat_MTS_NodeNext_ForcesESM(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "mts-nodenext",
+		SourcePath:      "lib.mts",
+		SourceBytes:     []byte("export const x: number = 1;\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderMTS,
+		Format:          FormatESM,
+		NormalizedOpts:  NormalizedOptions{Module: "NodeNext"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "export ") {
+		t.Fatalf(".mts + NodeNext should produce ESM, got: %s", code)
+	}
+}
+
+func TestFormat_CTS_NodeNext_ForcesCJS(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "cts-nodenext",
+		SourcePath:      "lib.cts",
+		SourceBytes:     []byte("const x: number = 1;\nmodule.exports = { x };\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderCTS,
+		Format:          FormatCJS,
+		NormalizedOpts:  NormalizedOptions{Module: "NodeNext"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "module.exports") {
+		t.Fatalf(".cts + NodeNext should preserve CJS, got: %s", code)
+	}
+}
+
+func TestFormat_MTS_Node16_ForcesESM(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "mts-node16",
+		SourcePath:      "lib.mts",
+		SourceBytes:     []byte("export const x: number = 1;\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderMTS,
+		Format:          FormatESM,
+		NormalizedOpts:  NormalizedOptions{Module: "Node16"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "export ") {
+		t.Fatalf(".mts + Node16 should produce ESM, got: %s", code)
+	}
+}
+
+func TestFormat_CTS_Node16_PreservesCJS(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "cts-node16",
+		SourcePath:      "lib.cts",
+		SourceBytes:     []byte("const x: number = 1;\nmodule.exports = { x };\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderCTS,
+		Format:          FormatCJS,
+		NormalizedOpts:  NormalizedOptions{Module: "Node16"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "module.exports") {
+		t.Fatalf(".cts + Node16 should preserve CJS, got: %s", code)
+	}
+}
+
+func TestFormat_TS_ExplicitCommonJS_ForcesCJS(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "ts-commonjs",
+		SourcePath:      "app.ts",
+		SourceBytes:     []byte("const x: number = 1;\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderTS,
+		Format:          FormatESM,
+		NormalizedOpts:  NormalizedOptions{Module: "CommonJS"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if strings.Contains(code, "export ") {
+		t.Fatalf("explicit CommonJS should produce CJS, got ESM: %s", code)
+	}
+}
+
+func TestFormat_TS_ExplicitESNext_ForcesESM(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "ts-esnext",
+		SourcePath:      "app.ts",
+		SourceBytes:     []byte("const x: number = 1;\nexport { x };\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderTS,
+		Format:          FormatCJS,
+		NormalizedOpts:  NormalizedOptions{Module: "ESNext"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "export ") {
+		t.Fatalf("explicit ESNext should produce ESM, got: %s", code)
+	}
+}
+
+func TestFormat_Preserve_KeepsRequestFormat(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "preserve-cjs",
+		SourcePath:      "app.ts",
+		SourceBytes:     []byte("const x: number = 1;\nmodule.exports = { x };\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderTS,
+		Format:          FormatCJS,
+		NormalizedOpts:  NormalizedOptions{Module: "Preserve"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "module.exports") {
+		t.Fatalf("Preserve + CJS request should produce CJS, got: %s", code)
+	}
+}
+
+func TestFormat_NoTsconfigModule_KeepsRequestFormat(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "no-module",
+		SourcePath:      "app.ts",
+		SourceBytes:     []byte("const x: number = 1;\nmodule.exports = { x };\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderTS,
+		Format:          FormatCJS,
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "module.exports") {
+		t.Fatalf("no tsconfig module should keep CJS request format, got: %s", code)
+	}
+}
+
+func TestFormat_NodeNextDoesNotOverrideCJS(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "ts-cjs-nodenext",
+		SourcePath:      "app.ts",
+		SourceBytes:     []byte("const x: number = 1;\nmodule.exports = { x };\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderTS,
+		Format:          FormatCJS,
+		NormalizedOpts:  NormalizedOptions{Module: "NodeNext"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "module.exports") {
+		t.Fatalf("NodeNext must not override CJS .ts, got: %s", code)
+	}
+}
+
+func TestFormat_Node16DoesNotOverrideCJS(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "ts-cjs-node16",
+		SourcePath:      "app.ts",
+		SourceBytes:     []byte("const x: number = 1;\nmodule.exports = { x };\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderTS,
+		Format:          FormatCJS,
+		NormalizedOpts:  NormalizedOptions{Module: "Node16"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "module.exports") {
+		t.Fatalf("Node16 must not override CJS .ts, got: %s", code)
+	}
+}
+
+func TestCacheKeyVariesByFormat(t *testing.T) {
+	src := []byte("const x: number = 1;\n")
+	id := EngineIdentity{Name: "esbuild", Version: "1.0"}
+	reqESM := TransformRequest{
+		RequestID: "ck-format-esm", SourcePath: "a.ts", SourceBytes: src,
+		SourceDigest: "fake", Loader: LoaderTS, Format: FormatESM,
+		NormalizedOpts: NormalizedOptions{Module: "NodeNext"},
+		SourceMapMode:  SourceMapNone, TargetNodeMajor: 20,
+	}
+	reqCJS := TransformRequest{
+		RequestID: "ck-format-cjs", SourcePath: "a.ts", SourceBytes: src,
+		SourceDigest: "fake", Loader: LoaderTS, Format: FormatCJS,
+		NormalizedOpts: NormalizedOptions{Module: "NodeNext"},
+		SourceMapMode:  SourceMapNone, TargetNodeMajor: 20,
+	}
+	if CacheKey(reqESM, id) == CacheKey(reqCJS, id) {
+		t.Fatal("cache keys must differ when Format differs (ESM vs CJS)")
+	}
+}
+
+func TestFormat_TSX_NodeNext_CJS(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "tsx-cjs-nodenext",
+		SourcePath:      "component.tsx",
+		SourceBytes:     []byte("const x: string = 'hi';\nmodule.exports = { x };\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderTSX,
+		Format:          FormatCJS,
+		NormalizedOpts:  NormalizedOptions{Module: "NodeNext", JSX: "react-jsx"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "module.exports") {
+		t.Fatalf(".tsx + CJS + NodeNext should produce CJS, got: %s", code)
+	}
+}
+
+func TestFormat_TSX_NodeNext_ESM(t *testing.T) {
+	e := NewEsbuildEngine()
+	ctx := context.Background()
+	req := TransformRequest{
+		RequestID:       "tsx-esm-nodenext",
+		SourcePath:      "component.tsx",
+		SourceBytes:     []byte("export const x: string = 'hi';\n"),
+		SourceDigest:    "fake",
+		Loader:          LoaderTSX,
+		Format:          FormatESM,
+		NormalizedOpts:  NormalizedOptions{Module: "NodeNext", JSX: "react-jsx"},
+		SourceMapMode:   SourceMapNone,
+		TargetNodeMajor: 20,
+	}
+	res, err := e.Transform(ctx, req)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	code := string(res.Code)
+	if !strings.Contains(code, "export ") {
+		t.Fatalf(".tsx + ESM + NodeNext should produce ESM, got: %s", code)
+	}
+}

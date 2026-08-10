@@ -51,12 +51,11 @@ func registry() []Entry {
 				"fall back to Node version heuristic",
 		},
 		{
-			Option:   "module",
-			Status:   StatusSupported,
-			Category: CategoryTypeScript,
-			Values:   []string{"CommonJS", "ES6", "ES2015", "ES2020", "ES2022", "ESNext", "NodeNext", "Node16", "Preserve"},
-			Limitation: "NodeNext/Node16 always map to ESM regardless of file extension; " +
-				"unrecognized modules silently fall back to format inferred from the request",
+			Option:     "module",
+			Status:     StatusSupported,
+			Category:   CategoryTypeScript,
+			Values:     []string{"CommonJS", "ES6", "ES2015", "ES2020", "ES2022", "ESNext", "NodeNext", "Node16", "Preserve"},
+			Limitation: "unrecognized modules silently fall back to format inferred from the request",
 		},
 		{
 			Option:     "useDefineForClassFields",

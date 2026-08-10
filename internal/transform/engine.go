@@ -67,8 +67,11 @@ func (e *esbuildEngine) Transform(ctx context.Context, req TransformRequest) (Tr
 		switch strings.ToUpper(req.NormalizedOpts.Module) {
 		case "COMMONJS":
 			format = api.FormatCommonJS
-		case "ES6", "ES2015", "ES2020", "ES2022", "ESNEXT", "NODENEXT", "NODE16":
+		case "ES6", "ES2015", "ES2020", "ES2022", "ESNEXT":
 			format = api.FormatESModule
+		case "NODENEXT", "NODE16":
+			// Preserve per-file resolved format (extension + package type).
+			// Node16/NodeNext do not force a universal module system.
 		case "PRESERVE":
 			// Keep whatever format was mapped from the request.
 		}
