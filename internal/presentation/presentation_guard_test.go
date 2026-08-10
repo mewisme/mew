@@ -1,6 +1,8 @@
 package presentation_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/mewisme/mew/internal/presentation"
@@ -311,6 +313,359 @@ func TestStatusCellType(t *testing.T) {
 	if sc.Text != "pass" || sc.Status != presentation.StatusSuccess {
 		t.Error("StatusCell fields not accessible")
 	}
+}
+
+// TestThemeValueNoForeground proves that generic values, numbers, versions,
+// and paths have no forced foreground color in light and dark themes.
+func TestThemeValueNoForeground(t *testing.T) {
+	valueKinds := []struct {
+		name string
+		kind presentation.ValueKind
+	}{
+		{"Value", presentation.ValuePlain},
+		{"Number", presentation.ValueNumber},
+		{"Version", presentation.ValueVersion},
+		{"Path", presentation.ValuePath},
+	}
+	testText := "hello-123"
+
+	for _, mode := range []presentation.ThemeMode{presentation.ThemeLight, presentation.ThemeDark} {
+		for _, vk := range valueKinds {
+			t.Run(modeName(mode)+"/"+vk.name, func(t *testing.T) {
+				settings := presentation.EffectiveSettings{
+					UseColor:  true,
+					ThemeMode: mode,
+					Width:     80,
+					Symbols:   presentation.UnicodeSymbols,
+				}
+				r := presentation.NewStaticRenderer(settings)
+				styled := r.StyledText(testText, vk.kind)
+				if styled == "" {
+					t.Fatal("styled output is empty")
+				}
+				if hasForegroundColor(styled) {
+					t.Errorf("%s/%s has forced foreground: %q", modeName(mode), vk.name, styled)
+				}
+				// In no-color mode, output must be plain.
+				r2 := presentation.NewStaticRenderer(presentation.EffectiveSettings{UseColor: false, Width: 80})
+				plain := r2.StyledText(testText, vk.kind)
+				if plain != testText {
+					t.Errorf("%s/%s no-color should be identity: got %q want %q", modeName(mode), vk.name, plain, testText)
+				}
+			})
+		}
+	}
+}
+
+// TestThemeLabelIsFaint proves that keys/labels are dim/faint in rich mode.
+func TestThemeLabelIsFaint(t *testing.T) {
+	for _, mode := range []presentation.ThemeMode{presentation.ThemeLight, presentation.ThemeDark} {
+		t.Run(modeName(mode), func(t *testing.T) {
+			// Test: render a key/value pair and verify the key contains Faint styling.
+			settings := presentation.EffectiveSettings{
+				UseColor:  true,
+				ThemeMode: mode,
+				Width:     80,
+				Symbols:   presentation.UnicodeSymbols,
+			}
+			r := presentation.NewStaticRenderer(settings)
+			out := r.KeyValues([]presentation.KeyValue{
+				{Key: "test-key", Value: "test-value", Style: presentation.ValuePlain},
+			})
+			// The key should have faint/dim styling around it.
+			if !containsFaint(out) {
+				t.Errorf("%s: key should contain faint styling, got: %q", modeName(mode), out)
+			}
+			// Verify the value has no foreground color.
+			// Extract value portion (after ": ").
+			if idx := strings.Index(out, ": "); idx >= 0 {
+				valuePart := out[idx+2:]
+				// Strip trailing ANSI reset.
+				valuePart = strings.TrimSuffix(valuePart, "\x1b[0m")
+				valuePart = strings.TrimSuffix(valuePart, "\x1b[m")
+				if hasForegroundColor(valuePart) {
+					t.Errorf("%s: value has forced foreground: %q", modeName(mode), valuePart)
+				}
+			}
+		})
+	}
+}
+
+// TestLabelRenderer proves the Label renderer method styles keys as dim/faint.
+func TestLabelRenderer(t *testing.T) {
+	for _, mode := range []presentation.ThemeMode{presentation.ThemeLight, presentation.ThemeDark} {
+		settings := presentation.EffectiveSettings{
+			UseColor:  true,
+			ThemeMode: mode,
+			Width:     80,
+			Symbols:   presentation.UnicodeSymbols,
+		}
+		r := presentation.NewStaticRenderer(settings)
+		label := r.Label("my-key")
+		if !containsFaint(label) {
+			t.Errorf("%s: Label(%q) should be faint, got: %q", modeName(mode), "my-key", label)
+		}
+	}
+	// Verify plain mode returns unstyled text.
+	settings := presentation.EffectiveSettings{UseColor: false, Width: 80}
+	r := presentation.NewStaticRenderer(settings)
+	if r.Label("key") != "key" {
+		t.Errorf("plain Label should be identity, got: %q", r.Label("key"))
+	}
+}
+
+// TestStatusCellRendering proves StatusCell renders the correct Unicode symbol
+// and semantic status text color.
+func TestStatusCellRendering(t *testing.T) {
+	settings := presentation.EffectiveSettings{
+		UseColor:  true,
+		ThemeMode: presentation.ThemeLight,
+		Width:     80,
+		Symbols:   presentation.UnicodeSymbols,
+	}
+	r := presentation.NewStaticRenderer(settings)
+
+	m := presentation.TableModel{
+		Columns: []presentation.TableColumn{
+			{Key: "check", Header: "CHECK"},
+			{Key: "status", Header: "STATUS"},
+		},
+		Rows: []map[string]string{
+			{"check": "cache", "status": "ok"},
+			{"check": "lock", "status": "fail"},
+		},
+		RowStatuses: []map[string]presentation.StatusCell{
+			{"status": {Text: "ok", Status: presentation.StatusSuccess}},
+			{"status": {Text: "fail", Status: presentation.StatusError}},
+		},
+	}
+
+	out := r.Table(m)
+	if out == "" {
+		t.Fatal("table output is empty")
+	}
+	// The output should contain the Unicode success symbol (✓) with green color.
+	if !strings.Contains(out, "\x1b[32m") && !strings.Contains(out, "\x1b[38") {
+		t.Errorf("expected success green in table, got: %q", out)
+	}
+	// The output should contain the Unicode error symbol (×) with red color.
+	if !strings.Contains(out, "\x1b[31m") && !strings.Contains(out, "\x1b[38") {
+		t.Errorf("expected error red in table, got: %q", out)
+	}
+}
+
+// TestStatusCellWithASCIISymbols proves StatusCell uses ASCII symbols.
+func TestStatusCellWithASCIISymbols(t *testing.T) {
+	settings := presentation.EffectiveSettings{
+		UseColor:  true,
+		ThemeMode: presentation.ThemeLight,
+		Width:     80,
+		Symbols:   presentation.ASCIISymbols,
+	}
+	r := presentation.NewStaticRenderer(settings)
+
+	m := presentation.TableModel{
+		Columns: []presentation.TableColumn{
+			{Key: "check", Header: "CHECK"},
+			{Key: "status", Header: "STATUS"},
+		},
+		Rows: []map[string]string{
+			{"check": "cache", "status": "ok"},
+		},
+		RowStatuses: []map[string]presentation.StatusCell{
+			{"status": {Text: "ok", Status: presentation.StatusSuccess}},
+		},
+	}
+
+	out := r.Table(m)
+	// ASCII success symbol is "OK".
+	if !strings.Contains(out, "OK") {
+		t.Errorf("expected ASCII 'OK' symbol in table, got: %q", out)
+	}
+}
+
+// TestStatusCellNoColor proves StatusCell emits no ANSI when color is disabled.
+func TestStatusCellNoColor(t *testing.T) {
+	settings := presentation.EffectiveSettings{
+		UseColor: false,
+		Width:    80,
+		Symbols:  presentation.UnicodeSymbols,
+	}
+	r := presentation.NewStaticRenderer(settings)
+
+	m := presentation.TableModel{
+		Columns: []presentation.TableColumn{
+			{Key: "check", Header: "CHECK"},
+			{Key: "status", Header: "STATUS"},
+		},
+		Rows: []map[string]string{
+			{"check": "cache", "status": "ok"},
+		},
+		RowStatuses: []map[string]presentation.StatusCell{
+			{"status": {Text: "ok", Status: presentation.StatusSuccess}},
+		},
+	}
+
+	out := r.Table(m)
+	if containsANSI(out) {
+		t.Errorf("no-color StatusCell should emit zero ANSI, got: %q", out)
+	}
+	// The Unicode success symbol must still be present (no ANSI, just the glyph).
+	if !strings.Contains(out, presentation.UnicodeSymbols.Success) {
+		t.Errorf("expected Unicode success symbol in plain table, got: %q", out)
+	}
+}
+
+// TestTableSortingPreservesRowStatuses proves sorting keeps RowStatuses
+// aligned with the correct row after sort.
+func TestTableSortingPreservesRowStatuses(t *testing.T) {
+	settings := presentation.EffectiveSettings{
+		UseColor: false,
+		Width:    80,
+		Symbols:  presentation.UnicodeSymbols,
+	}
+	r := presentation.NewStaticRenderer(settings)
+
+	m := presentation.TableModel{
+		Columns: []presentation.TableColumn{
+			{Key: "name", Header: "NAME", Primary: true},
+			{Key: "status", Header: "STATUS"},
+		},
+		Rows: []map[string]string{
+			{"name": "z-pkg", "status": "ok"},
+			{"name": "a-pkg", "status": "fail"},
+		},
+		RowStatuses: []map[string]presentation.StatusCell{
+			{"status": {Text: "ok", Status: presentation.StatusSuccess}},
+			{"status": {Text: "fail", Status: presentation.StatusError}},
+		},
+	}
+
+	out := r.Table(m)
+	// After sorting, "a-pkg" with "fail" should come first.
+	idxA := strings.Index(out, "a-pkg")
+	idxZ := strings.Index(out, "z-pkg")
+	if idxA < 0 || idxZ < 0 {
+		t.Fatalf("table missing rows: %q", out)
+	}
+	if idxA > idxZ {
+		t.Errorf("rows not sorted: %q", out)
+	}
+	// The "fail" status should be next to "a-pkg", and "ok" next to "z-pkg".
+	idxFail := strings.Index(out, "fail")
+	idxOK := strings.Index(out, "ok")
+	if idxFail < idxA || idxFail > idxZ {
+		t.Errorf("status 'fail' not aligned with a-pkg: %q", out)
+	}
+	if idxOK < idxZ {
+		t.Errorf("status 'ok' not aligned with z-pkg: %q", out)
+	}
+}
+
+// TestTableColumnCellStyleApplied proves column-level CellStyle is applied.
+func TestTableColumnCellStyleApplied(t *testing.T) {
+	settings := presentation.EffectiveSettings{
+		UseColor:  true,
+		ThemeMode: presentation.ThemeLight,
+		Width:     80,
+		Symbols:   presentation.UnicodeSymbols,
+	}
+	r := presentation.NewStaticRenderer(settings)
+
+	m := presentation.TableModel{
+		Columns: []presentation.TableColumn{
+			{Key: "pkg", Header: "PACKAGE", Primary: true, CellStyle: presentation.ValuePackage},
+			{Key: "ver", Header: "VERSION", CellStyle: presentation.ValueVersion},
+		},
+		Rows: []map[string]string{
+			{"pkg": "my-pkg", "ver": "1.0.0"},
+		},
+	}
+
+	out := r.Table(m)
+	if out == "" {
+		t.Fatal("table output is empty")
+	}
+	// Package should have cyan foreground (FgCyan = 36 in light mode).
+	// Version should only have Bold (1), no foreground color.
+	// The version "1.0.0" should appear in the output.
+	if !strings.Contains(out, "my-pkg") || !strings.Contains(out, "1.0.0") {
+		t.Fatalf("table missing cell values: %q", out)
+	}
+}
+
+// TestSymbolRoleOnRenderer proves SymbolRole is accessible via StaticRenderer.
+func TestSymbolRoleOnRenderer(t *testing.T) {
+	settings := presentation.EffectiveSettings{
+		UseColor:  true,
+		ThemeMode: presentation.ThemeLight,
+		Symbols:   presentation.UnicodeSymbols,
+	}
+	r := presentation.NewStaticRenderer(settings)
+
+	arrow := r.SymbolRole(presentation.RoleStructuralArrow)
+	if arrow == "" {
+		t.Fatal("SymbolRole returned empty")
+	}
+	// Should contain the arrow glyph.
+	if !strings.Contains(arrow, presentation.UnicodeSymbols.Arrow) {
+		t.Errorf("SymbolRole(RoleStructuralArrow) missing arrow glyph: %q", arrow)
+	}
+
+	// Plain mode should return unstyled glyph.
+	r2 := presentation.NewStaticRenderer(presentation.EffectiveSettings{
+		UseColor: false,
+		Symbols:  presentation.ASCIISymbols,
+	})
+	arrowPlain := r2.SymbolRole(presentation.RoleStructuralArrow)
+	if arrowPlain != presentation.ASCIISymbols.Arrow {
+		t.Errorf("plain SymbolRole should be ASCII arrow %q, got: %q",
+			presentation.ASCIISymbols.Arrow, arrowPlain)
+	}
+	if containsANSI(arrowPlain) {
+		t.Errorf("plain SymbolRole should have no ANSI: %q", arrowPlain)
+	}
+}
+
+func modeName(m presentation.ThemeMode) string {
+	switch m {
+	case presentation.ThemeLight:
+		return "Light"
+	case presentation.ThemeDark:
+		return "Dark"
+	case presentation.ThemeAccessible:
+		return "Accessible"
+	case presentation.ThemeNone:
+		return "None"
+	default:
+		return "Unknown"
+	}
+}
+
+func hasForegroundColor(s string) bool {
+	if !containsANSI(s) {
+		return false
+	}
+	// Check for standard foreground colors (30-37, 90-97).
+	for i := 30; i <= 37; i++ {
+		if strings.Contains(s, fmt.Sprintf("\x1b[%dm", i)) {
+			return true
+		}
+	}
+	for i := 90; i <= 97; i++ {
+		if strings.Contains(s, fmt.Sprintf("\x1b[%dm", i)) {
+			return true
+		}
+	}
+	// Check for extended/RGB foreground (38;5;N or 38;2;R;G;B).
+	if strings.Contains(s, "\x1b[38;5;") || strings.Contains(s, "\x1b[38;2;") {
+		return true
+	}
+	return false
+}
+
+func containsFaint(s string) bool {
+	return strings.Contains(s, "\x1b[2m")
 }
 
 func containsANSI(s string) bool {

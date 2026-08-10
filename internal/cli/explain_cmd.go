@@ -146,7 +146,7 @@ func formatExplainHuman(r presentation.StaticRenderer, ex *resolver.PackageExpla
 	}
 
 	for _, d := range ex.Decisions {
-		arrow := presentation.RenderSymbolRole(sym, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor)
+		arrow := r.SymbolRole(presentation.RoleStructuralArrow)
 		line := fmt.Sprintf("%s@%s %s %s (%s)",
 			d.Package,
 			d.Requested,
@@ -176,7 +176,7 @@ func formatExplainHuman(r presentation.StaticRenderer, ex *resolver.PackageExpla
 	if len(ex.Paths) > 0 {
 		b.WriteString("imported by:\n")
 		for _, p := range ex.Paths {
-			arrow := presentation.RenderSymbolRole(sym, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor)
+			arrow := r.SymbolRole(presentation.RoleStructuralArrow)
 			chain := make([]string, len(p.Chain))
 			for i, name := range p.Chain {
 				chain[i] = r.StyledText(name, presentation.ValuePackage)
@@ -190,8 +190,7 @@ func formatExplainHuman(r presentation.StaticRenderer, ex *resolver.PackageExpla
 }
 
 func formatExplainConflictTree(r presentation.StaticRenderer, tree resolver.ConflictTree) string {
-	settings := r.Settings()
-	arrow := presentation.RenderSymbolRole(settings.Symbols, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor)
-	sep := settings.Symbols.Separator
+	arrow := r.SymbolRole(presentation.RoleStructuralArrow)
+	sep := r.Settings().Symbols.Separator
 	return resolver.FormatConflictTreeWithSymbols(tree, arrow, sep)
 }

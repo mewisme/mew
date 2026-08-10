@@ -329,7 +329,7 @@ func renderResolveModuleText(cmd *cobra.Command, specifier, cwd, configPath stri
 			if step.Substituted != "" {
 				b.WriteString(fmt.Sprintf(" (%s %s %s)",
 					step.Resolved,
-					presentation.RenderSymbolRole(sym, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor),
+					r.SymbolRole(presentation.RoleStructuralArrow),
 					step.Substituted))
 			} else if step.Resolved != "" {
 				b.WriteString(fmt.Sprintf(" (%s)", step.Resolved))
@@ -416,9 +416,6 @@ func traceOutcomeStatus(outcome string) presentation.Status {
 
 // renderStaticAnalysis prints tsconfig path analysis without Node resolution.
 func renderStaticAnalysis(r presentation.StaticRenderer, specifier, cwd, configPath string) string {
-	settings := r.Settings()
-	sym := settings.Symbols
-
 	if configPath == "" {
 		return r.PlainText("No tsconfig paths configured. Resolution falls through to Node defaults.\n")
 	}
@@ -458,7 +455,7 @@ func renderStaticAnalysis(r presentation.StaticRenderer, specifier, cwd, configP
 
 	b.WriteByte('\n')
 	b.WriteString(r.PlainText("Paths:"))
-	arrow := presentation.RenderSymbolRole(sym, presentation.NewTheme(settings.ThemeMode), presentation.RoleStructuralArrow, settings.UseColor)
+	arrow := r.SymbolRole(presentation.RoleStructuralArrow)
 	for _, pm := range opts.PathMappings {
 		b.WriteString(fmt.Sprintf("\n  %s %s %s", pm.Pattern, arrow, strings.Join(pm.Targets, ", ")))
 	}

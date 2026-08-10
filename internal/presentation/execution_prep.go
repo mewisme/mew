@@ -185,7 +185,7 @@ func renderPrepRows(rows []KeyValue, settings EffectiveSettings, theme Theme) []
 	for _, row := range rows {
 		key := fmt.Sprintf("%-*s", width, row.Key)
 		if settings.UseColor {
-			key = applyStyle(theme.Faint, key, true)
+			key = applyStyle(theme.Label, key, true)
 		}
 		val := styleValue(row.Value, row.Style, settings.UseColor, theme)
 

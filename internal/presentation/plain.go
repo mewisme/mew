@@ -103,8 +103,16 @@ func (r *plainRenderer) Error(view ErrorView) string {
 
 func (r *plainRenderer) PlainText(s string) string { return s }
 
+func (r *plainRenderer) Label(text string) string {
+	return text // plain mode: no styling
+}
+
 func (r *plainRenderer) Symbol(st Status) string {
 	return statusSymbol(r.settings.Symbols, st)
+}
+
+func (r *plainRenderer) SymbolRole(role SymbolRole) string {
+	return RenderSymbolRole(r.settings.Symbols, Theme{}, role, false)
 }
 
 func (r *plainRenderer) StyledText(text string, kind ValueKind) string {

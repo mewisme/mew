@@ -12,8 +12,13 @@ type StaticRenderer interface {
 	PackageDeltas([]PackageDelta) string
 	SpecifierDeltas([]SpecifierDelta) string
 	PlainText(string) string
+	// Label returns a dim/faint-styled key label. Keys are always visually
+	// subordinate to their values.
+	Label(text string) string
 	// Symbol returns a status glyph, colored when the theme supports it.
 	Symbol(status Status) string
+	// SymbolRole returns a semantic symbol glyph, colored when the theme supports it.
+	SymbolRole(role SymbolRole) string
 	// StyledText returns text styled according to the given ValueKind.
 	StyledText(text string, kind ValueKind) string
 	Settings() EffectiveSettings

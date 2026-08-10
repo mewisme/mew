@@ -392,9 +392,6 @@ func writeConfigListHuman(g *globalFlags, cmd *cobra.Command, view configListVie
 	// Narrow terminals and accessible mode get one field per line; the same
 	// threshold the shared KeyValues renderer uses.
 	stacked := settings.Width < 60 || settings.Accessible
-	theme := presentation.NewTheme(settings.ThemeMode)
-	useColor := settings.UseColor
-	dot := presentation.RenderSemanticSymbol(settings.Symbols, theme, presentation.StatusRunning, useColor)
 
 	var b strings.Builder
 	b.WriteString(configScopeLabel(view.Scope))
@@ -426,7 +423,7 @@ func writeConfigListHuman(g *globalFlags, cmd *cobra.Command, view configListVie
 			b.WriteString("\n")
 			lastGroup = e.Group
 		}
-		b.WriteString(configListRow(e, keyWidth, showOrigin, stacked, dot, theme, useColor))
+		b.WriteString(configListRow(e, keyWidth, showOrigin, stacked, r))
 		b.WriteString("\n")
 	}
 	if len(view.Entries) > 0 {
@@ -441,15 +438,12 @@ func writeConfigListHuman(g *globalFlags, cmd *cobra.Command, view configListVie
 
 // configListRow renders one list row, padded to keyWidth so columns align on
 // visible width rather than byte length.
-func configListRow(e configEntryView, keyWidth int, showOrigin, stacked bool, dot string, theme presentation.Theme, useColor bool) string {
+func configListRow(e configEntryView, keyWidth int, showOrigin, stacked bool, r presentation.StaticRenderer) string {
 	indicator := "  "
 	if e.Configured {
-		indicator = dot + " "
+		indicator = r.Symbol(presentation.StatusRunning) + " "
 	}
-	key := e.Key
-	if useColor && theme.Muted != nil {
-		key = theme.Muted.Sprint(key)
-	}
+	key := r.Label(e.Key)
 	if stacked {
 		var b strings.Builder
 		b.WriteString(indicator)

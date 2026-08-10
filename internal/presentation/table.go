@@ -3,6 +3,8 @@ package presentation
 import (
 	"sort"
 	"strings"
+
+	"github.com/fatih/color"
 )
 
 const stackedTableThreshold = 60
@@ -89,10 +91,9 @@ func formatStackedTable(m TableModel, settings EffectiveSettings, color bool, th
 			b.WriteString("  ")
 			b.WriteString(applyStyle(theme.Label, strings.ToLower(c.Header), color))
 			b.WriteString("  ")
-			b.WriteString(tableCellValue(row[c.Key], c.CellStyle, i, c.Key, m, color, theme))
+			b.WriteString(tableCellValue(row[c.Key], c.CellStyle, i, c.Key, m, color, theme, settings.Symbols))
 		}
 	}
-	_ = settings
 	return b.String()
 }
 
@@ -140,7 +141,7 @@ func formatWideTable(m TableModel, settings EffectiveSettings, color bool, theme
 			}
 			raw := row[c.Key]
 			cell := fitCell(raw, widths[i], c.Truncate, settings.Symbols.Ellipsis)
-			styled := tableCellValue(cell, c.CellStyle, ri, c.Key, m, color, theme)
+			styled := tableCellValue(cell, c.CellStyle, ri, c.Key, m, color, theme, settings.Symbols)
 			b.WriteString(padCell(styled, cell, widths[i], c.Align))
 		}
 	}
@@ -207,13 +208,34 @@ func fitCell(s string, width int, policy TruncatePolicy, ellipsis string) string
 
 // tableCellValue resolves the styled form of a table cell, checking for
 // row-level StatusCell metadata first, falling back to column-level ValueKind.
-func tableCellValue(val string, colKind ValueKind, rowIdx int, colKey string, m TableModel, color bool, theme Theme) string {
+func tableCellValue(val string, colKind ValueKind, rowIdx int, colKey string, m TableModel, color bool, theme Theme, sym Symbols) string {
 	if rowIdx < len(m.RowStatuses) {
 		if sc, ok := m.RowStatuses[rowIdx][colKey]; ok {
-			return RenderSemanticSymbol(Symbols{}, theme, sc.Status, color) + " " + applyStyle(theme.Value, sc.Text, color)
+			statusSym := RenderSemanticSymbol(sym, theme, sc.Status, color)
+			statusText := applyStyle(semanticStatusStyle(theme, sc.Status), sc.Text, color)
+			return statusSym + " " + statusText
 		}
 	}
 	return styleValue(val, colKind, color, theme)
+}
+
+// semanticStatusStyle returns the theme style for a status, so StatusCell
+// text receives the same semantic color as its symbol (not generic Value).
+func semanticStatusStyle(theme Theme, st Status) *color.Color {
+	switch st {
+	case StatusSuccess:
+		return theme.Success
+	case StatusWarning, StatusCancelled:
+		return theme.Warning
+	case StatusError:
+		return theme.Error
+	case StatusInfo, StatusRunning:
+		return theme.Info
+	case StatusPending, StatusSkipped:
+		return theme.Muted
+	default:
+		return theme.Value
+	}
 }
 
 func padCell(styled, plain string, width int, align ColumnAlign) string {

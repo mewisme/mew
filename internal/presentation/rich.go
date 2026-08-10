@@ -105,8 +105,16 @@ func (r *richRenderer) Error(view ErrorView) string {
 
 func (r *richRenderer) PlainText(s string) string { return s }
 
+func (r *richRenderer) Label(text string) string {
+	return applyStyle(r.theme.Label, text, r.settings.UseColor)
+}
+
 func (r *richRenderer) Symbol(st Status) string {
 	return RenderSemanticSymbol(r.settings.Symbols, r.theme, st, r.settings.UseColor)
+}
+
+func (r *richRenderer) SymbolRole(role SymbolRole) string {
+	return RenderSymbolRole(r.settings.Symbols, r.theme, role, r.settings.UseColor)
 }
 
 func (r *richRenderer) StyledText(text string, kind ValueKind) string {

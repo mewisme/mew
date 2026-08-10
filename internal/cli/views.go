@@ -17,14 +17,33 @@ func doctorTableModel(rep app.DoctorReport) presentation.TableModel {
 		{Key: "message", Header: "MESSAGE", MinWidth: 8, Prefer: 40, Truncate: presentation.TruncateMiddle},
 	}
 	rows := make([]map[string]string, 0, len(rep.Checks))
+	statuses := make([]map[string]presentation.StatusCell, 0, len(rep.Checks))
 	for _, c := range rep.Checks {
 		rows = append(rows, map[string]string{
 			"check":   c.ID,
 			"status":  c.Status,
 			"message": c.Message,
 		})
+		statuses = append(statuses, map[string]presentation.StatusCell{
+			"status": {Text: c.Status, Status: doctorStatusToPresentation(c.Status)},
+		})
 	}
-	return presentation.TableModel{Columns: cols, Rows: rows}
+	return presentation.TableModel{Columns: cols, Rows: rows, RowStatuses: statuses}
+}
+
+func doctorStatusToPresentation(s string) presentation.Status {
+	switch app.DoctorCheckStatus(s) {
+	case app.DoctorStatusOK:
+		return presentation.StatusSuccess
+	case app.DoctorStatusWarn:
+		return presentation.StatusWarning
+	case app.DoctorStatusFail:
+		return presentation.StatusError
+	case app.DoctorStatusSkipped:
+		return presentation.StatusSkipped
+	default:
+		return presentation.StatusInfo
+	}
 }
 
 func doctorSummary(rep app.DoctorReport) presentation.Summary {
@@ -39,11 +58,11 @@ func doctorSummary(rep app.DoctorReport) presentation.Summary {
 
 func outdatedTableModel(entries []app.OutdatedEntry) presentation.TableModel {
 	cols := []presentation.TableColumn{
-		{Key: "package", Header: "PACKAGE", MinWidth: 8, Prefer: 24, Primary: true, Truncate: presentation.TruncateMiddle},
-		{Key: "current", Header: "CURRENT", MinWidth: 6, Prefer: 12},
-		{Key: "wanted", Header: "WANTED", MinWidth: 6, Prefer: 12},
-		{Key: "latest", Header: "LATEST", MinWidth: 6, Prefer: 12},
-		{Key: "location", Header: "LOCATION", MinWidth: 4, Prefer: 16, Truncate: presentation.TruncateMiddle},
+		{Key: "package", Header: "PACKAGE", MinWidth: 8, Prefer: 24, Primary: true, Truncate: presentation.TruncateMiddle, CellStyle: presentation.ValuePackage},
+		{Key: "current", Header: "CURRENT", MinWidth: 6, Prefer: 12, CellStyle: presentation.ValueVersion},
+		{Key: "wanted", Header: "WANTED", MinWidth: 6, Prefer: 12, CellStyle: presentation.ValueVersion},
+		{Key: "latest", Header: "LATEST", MinWidth: 6, Prefer: 12, CellStyle: presentation.ValueVersion},
+		{Key: "location", Header: "LOCATION", MinWidth: 4, Prefer: 16, Truncate: presentation.TruncateMiddle, CellStyle: presentation.ValuePath},
 	}
 	rows := make([]map[string]string, 0, len(entries))
 	for _, e := range entries {
@@ -64,9 +83,9 @@ func outdatedTableModel(entries []app.OutdatedEntry) presentation.TableModel {
 
 func workspaceListTable(rows []workspaceListRow) presentation.TableModel {
 	cols := []presentation.TableColumn{
-		{Key: "name", Header: "NAME", MinWidth: 8, Prefer: 20, Primary: true},
-		{Key: "version", Header: "VERSION", MinWidth: 6, Prefer: 12},
-		{Key: "path", Header: "PATH", MinWidth: 4, Prefer: 24, Truncate: presentation.TruncateMiddle},
+		{Key: "name", Header: "NAME", MinWidth: 8, Prefer: 20, Primary: true, CellStyle: presentation.ValuePackage},
+		{Key: "version", Header: "VERSION", MinWidth: 6, Prefer: 12, CellStyle: presentation.ValueVersion},
+		{Key: "path", Header: "PATH", MinWidth: 4, Prefer: 24, Truncate: presentation.TruncateMiddle, CellStyle: presentation.ValuePath},
 	}
 	tableRows := make([]map[string]string, 0, len(rows))
 	for _, r := range rows {
@@ -137,18 +156,33 @@ func snapshotTableModel(list []snapshot.Snapshot, sym presentation.Symbols) pres
 func policyTableModel(result policy.PolicyResult) presentation.TableModel {
 	cols := []presentation.TableColumn{
 		{Key: "severity", Header: "SEVERITY", MinWidth: 6, Prefer: 10},
-		{Key: "package", Header: "PACKAGE", MinWidth: 8, Prefer: 24, Primary: true, Truncate: presentation.TruncateMiddle},
+		{Key: "package", Header: "PACKAGE", MinWidth: 8, Prefer: 24, Primary: true, Truncate: presentation.TruncateMiddle, CellStyle: presentation.ValuePackage},
 		{Key: "message", Header: "MESSAGE", MinWidth: 8, Prefer: 40, Truncate: presentation.TruncateMiddle},
 	}
 	rows := make([]map[string]string, 0, len(result.Violations))
+	statuses := make([]map[string]presentation.StatusCell, 0, len(result.Violations))
 	for _, v := range result.Violations {
 		rows = append(rows, map[string]string{
 			"severity": string(v.Severity),
 			"package":  v.Package,
 			"message":  v.Message,
 		})
+		statuses = append(statuses, map[string]presentation.StatusCell{
+			"severity": {Text: string(v.Severity), Status: policySeverityToStatus(v.Severity)},
+		})
 	}
-	return presentation.TableModel{Columns: cols, Rows: rows}
+	return presentation.TableModel{Columns: cols, Rows: rows, RowStatuses: statuses}
+}
+
+func policySeverityToStatus(s policy.SeverityLevel) presentation.Status {
+	switch s {
+	case policy.SeverityError:
+		return presentation.StatusError
+	case policy.SeverityWarn:
+		return presentation.StatusWarning
+	default:
+		return presentation.StatusInfo
+	}
 }
 
 func policySummary(result policy.PolicyResult) presentation.Summary {
@@ -160,11 +194,11 @@ func policySummary(result policy.PolicyResult) presentation.Summary {
 
 func buildsTableModel(entries []lifecycle.AuditEntry) presentation.TableModel {
 	cols := []presentation.TableColumn{
-		{Key: "time", Header: "TIME", MinWidth: 8, Prefer: 24},
-		{Key: "package", Header: "PACKAGE", MinWidth: 12, Prefer: 32, Primary: true, Truncate: presentation.TruncateEnd},
-		{Key: "script", Header: "SCRIPT", MinWidth: 6, Prefer: 12},
-		{Key: "exit", Header: "EXIT", MinWidth: 4, Prefer: 6},
-		{Key: "duration", Header: "MS", MinWidth: 4, Prefer: 8},
+		{Key: "time", Header: "TIME", MinWidth: 8, Prefer: 24, CellStyle: presentation.ValueMuted},
+		{Key: "package", Header: "PACKAGE", MinWidth: 12, Prefer: 32, Primary: true, Truncate: presentation.TruncateEnd, CellStyle: presentation.ValuePackage},
+		{Key: "script", Header: "SCRIPT", MinWidth: 6, Prefer: 12, CellStyle: presentation.ValueCommand},
+		{Key: "exit", Header: "EXIT", MinWidth: 4, Prefer: 6, CellStyle: presentation.ValueNumber},
+		{Key: "duration", Header: "MS", MinWidth: 4, Prefer: 8, CellStyle: presentation.ValueNumber},
 	}
 	rows := make([]map[string]string, 0, len(entries))
 	for _, e := range entries {
