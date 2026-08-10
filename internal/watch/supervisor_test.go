@@ -2,8 +2,10 @@ package watch
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -843,26 +845,28 @@ func TestSupervisorNoRestartDuringShutdown(t *testing.T) {
 	}
 }
 
-func TestSupervisorChildTerminationTimeout(t *testing.T) {
+// TestSupervisorRestartErrorStops verifies that a RestartFunc that returns
+// a non-Canceled error causes the supervisor to stop rather than continue
+// to the next generation.
+func TestSupervisorRestartErrorStops(t *testing.T) {
 	fw := newFakeWatcher()
 	defer func() { _ = fw.Close() }()
 
-	// Child that ignores context cancellation.
+	started := make(chan struct{})
 	restart := func(ctx context.Context) (int, error) {
+		started <- struct{}{}
 		<-ctx.Done()
-		// Don't return — simulate stubborn child.
-		select {}
+		return 1, fmt.Errorf("fatal: node not found")
 	}
 
 	sup := NewSupervisor(SupervisorOptions{
-		Watcher:            fw,
-		WatchPaths:         []string{"/fake"},
-		Restart:            restart,
-		DebounceInterval:   10 * time.Millisecond,
-		TerminationTimeout: 100 * time.Millisecond,
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 10 * time.Millisecond,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	errCh := make(chan error, 1)
@@ -871,19 +875,431 @@ func TestSupervisorChildTerminationTimeout(t *testing.T) {
 		errCh <- err
 	}()
 
-	// Let the supervisor launch the child.
-	time.Sleep(50 * time.Millisecond)
+	// Wait for first launch.
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for first launch")
+	}
 
-	// Cancel the top-level context. The supervisor should cancel the
-	// child, wait for TerminationTimeout, then return.
-	cancel()
+	// Trigger restart — supervisor cancels child, child returns fatal error.
+	fw.emit(OpWrite, "/fake/app.ts")
 
 	select {
 	case err := <-errCh:
-		if err != context.Canceled {
-			t.Logf("supervisor returned: %v", err)
+		if err == nil {
+			t.Error("expected error from RestartFunc failure, got nil")
 		}
-	case <-time.After(500 * time.Millisecond):
-		t.Error("timeout waiting for supervisor to give up on stubborn child")
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for supervisor to stop on error")
+	}
+}
+
+// TestSupervisorStubbornChildForceKill verifies that a RestartFunc that
+// properly force-kills a stubborn child (as process.ExecSupervisor.Wait does)
+// allows the supervisor to successfully move to the next generation.
+func TestSupervisorStubbornChildForceKill(t *testing.T) {
+	fw := newFakeWatcher()
+	defer func() { _ = fw.Close() }()
+
+	// Simulate a RestartFunc that handles cancellation correctly:
+	// it force-kills the child (simulated by a short delay) and returns.
+	var genCounter atomic.Int64
+	restart := func(ctx context.Context) (int, error) {
+		genCounter.Add(1)
+		<-ctx.Done()
+		// Simulate force-kill + reap delay (much shorter than any timeout).
+		select {
+		case <-time.After(20 * time.Millisecond):
+		case <-ctx.Done():
+		}
+		return 0, nil
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := sup.Run(ctx)
+		errCh <- err
+	}()
+
+	// Wait for gen 1 to start.
+	time.Sleep(50 * time.Millisecond)
+	if genCounter.Load() < 1 {
+		t.Fatal("gen 1 did not start")
+	}
+
+	// Trigger restart. Supervisor cancels gen 1, waits for force-kill,
+	// then starts gen 2.
+	fw.emit(OpWrite, "/fake/app.ts")
+	time.Sleep(200 * time.Millisecond)
+
+	if genCounter.Load() < 2 {
+		t.Fatal("gen 2 did not start after gen 1 was force-killed")
+	}
+
+	cancel()
+	select {
+	case <-errCh:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for supervisor exit")
+	}
+}
+
+// TestSupervisorGenerationOverlapPrevention verifies that at most one
+// generation is active at any time. Uses a barrier to detect overlap.
+func TestSupervisorGenerationOverlapPrevention(t *testing.T) {
+	fw := newFakeWatcher()
+	defer func() { _ = fw.Close() }()
+
+	var mu sync.Mutex
+	var activeCount int
+	var maxActive int
+	genExit := make(chan struct{}, 4)
+
+	restart := func(ctx context.Context) (int, error) {
+		mu.Lock()
+		activeCount++
+		if activeCount > maxActive {
+			maxActive = activeCount
+		}
+		mu.Unlock()
+		<-ctx.Done()
+		mu.Lock()
+		activeCount--
+		mu.Unlock()
+		genExit <- struct{}{}
+		return 0, nil
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 20 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	go func() { _, _ = sup.Run(ctx) }()
+
+	// Wait for first gen to start.
+	select {
+	case <-genExit:
+		t.Fatal("unexpected early exit")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Emit 5 rapid changes to trigger repeated restarts.
+	for i := 0; i < 5; i++ {
+		fw.emit(OpWrite, "/fake/x.ts")
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Let debounce settle and final restart execute.
+	time.Sleep(300 * time.Millisecond)
+
+	cancel()
+
+	mu.Lock()
+	ml := maxActive
+	mu.Unlock()
+
+	if ml > 1 {
+		t.Errorf("max live generations = %d, want <= 1", ml)
+	}
+}
+
+// TestSupervisorGrandchildCleanup verifies that when a RestartFunc properly
+// terminates a process tree, the supervisor can move to N+1. (The actual
+// process-tree cleanup is tested in internal/process.)
+func TestSupervisorGrandchildCleanup(t *testing.T) {
+	fw := newFakeWatcher()
+	defer func() { _ = fw.Close() }()
+
+	var genCounter atomic.Int64
+	restart := func(ctx context.Context) (int, error) {
+		genCounter.Add(1)
+		<-ctx.Done()
+		// Simulate process tree cleanup delay.
+		select {
+		case <-time.After(10 * time.Millisecond):
+		case <-ctx.Done():
+		}
+		return 0, nil
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	go func() { _, _ = sup.Run(ctx) }()
+
+	time.Sleep(50 * time.Millisecond)
+	if genCounter.Load() != 1 {
+		t.Fatalf("expected gen 1, got %d", genCounter.Load())
+	}
+
+	// Trigger restart.
+	fw.emit(OpWrite, "/fake/app.ts")
+	time.Sleep(100 * time.Millisecond)
+
+	if genCounter.Load() < 2 {
+		t.Fatal("gen 2 did not start after gen 1 cleanup")
+	}
+
+	cancel()
+}
+
+// TestSupervisorNoRestartOnFatalError verifies that when RestartFunc returns
+// a non-Canceled error on natural exit, the supervisor stops rather than
+// looping.
+func TestSupervisorNoRestartOnFatalError(t *testing.T) {
+	fw := newFakeWatcher()
+	defer func() { _ = fw.Close() }()
+
+	restart := func(ctx context.Context) (int, error) {
+		return 1, fmt.Errorf("unrecoverable error")
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	code, err := sup.Run(ctx)
+	if err == nil {
+		t.Error("expected error from RestartFunc, got nil")
+	}
+	if code != 1 {
+		t.Errorf("expected code 1, got %d", code)
+	}
+}
+
+// TestSupervisorParentCancelReapsChild verifies that parent context
+// cancellation waits for child reaping before Run returns.
+func TestSupervisorParentCancelReapsChild(t *testing.T) {
+	fw := newFakeWatcher()
+	defer func() { _ = fw.Close() }()
+
+	cleanedUp := make(chan struct{})
+	restart := func(ctx context.Context) (int, error) {
+		<-ctx.Done()
+		close(cleanedUp)
+		return 130, nil
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan struct{})
+	go func() {
+		_, _ = sup.Run(ctx)
+		close(done)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	// Supervisor must not return until cleanup completes.
+	select {
+	case <-cleanedUp:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for child cleanup on cancel")
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for supervisor exit after cleanup")
+	}
+}
+
+// TestSupervisorWatcherFailureReapsChild verifies that watcher failure
+// while a child runs terminates and reaps the child before returning.
+func TestSupervisorWatcherFailureReapsChild(t *testing.T) {
+	fw := newFakeWatcher()
+
+	var reaped bool
+	restart := func(ctx context.Context) (int, error) {
+		<-ctx.Done()
+		reaped = true
+		return 130, nil
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, err := sup.Run(ctx)
+		errCh <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Close watcher channels while child is running.
+	_ = fw.Close()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Error("expected error from watcher failure")
+		}
+		if !reaped {
+			t.Error("child was not reaped before supervisor returned")
+		}
+	case <-time.After(time.Second):
+		t.Error("timeout waiting for supervisor to detect watcher failure")
+	}
+}
+
+// TestSupervisorLateResultIgnored verifies that a late result from
+// generation N cannot affect generation N+1.
+func TestSupervisorLateResultIgnored(t *testing.T) {
+	fw := newFakeWatcher()
+	defer func() { _ = fw.Close() }()
+
+	var mu sync.Mutex
+	var genCounter int
+	genDone := make(chan int, 4)
+
+	restart := func(ctx context.Context) (int, error) {
+		mu.Lock()
+		genCounter++
+		id := genCounter
+		mu.Unlock()
+		<-ctx.Done()
+		genDone <- id
+		return id, nil
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	go func() { _, _ = sup.Run(ctx) }()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Trigger restart.
+	fw.emit(OpWrite, "/fake/app.ts")
+	time.Sleep(100 * time.Millisecond)
+
+	cancel()
+
+	// Collect results. Generation 1 must have completed before
+	// generation 2 started. Since we serialise, the order of genDone
+	// sends should be ascending.
+	results := make([]int, 0, 2)
+	timeout := time.After(time.Second)
+	for i := 0; i < 2; i++ {
+		select {
+		case id := <-genDone:
+			results = append(results, id)
+		case <-timeout:
+			t.Fatal("timeout waiting for gen completion")
+		}
+	}
+
+	if len(results) >= 2 && results[0] > results[1] {
+		t.Errorf("gen order reversed: %v (late result from gen N affected N+1)", results)
+	}
+}
+
+// TestSupervisorRapidRestartCoalescing verifies that rapid restart events
+// do not create unbounded process/goroutine fan-out.
+func TestSupervisorRapidRestartCoalescing(t *testing.T) {
+	fw := newFakeWatcher()
+	defer func() { _ = fw.Close() }()
+
+	var mu sync.Mutex
+	var goroutinePeak int
+	var goroutineNow int
+	restart := func(ctx context.Context) (int, error) {
+		mu.Lock()
+		goroutineNow++
+		if goroutineNow > goroutinePeak {
+			goroutinePeak = goroutineNow
+		}
+		mu.Unlock()
+		<-ctx.Done()
+		mu.Lock()
+		goroutineNow--
+		mu.Unlock()
+		return 0, nil
+	}
+
+	sup := NewSupervisor(SupervisorOptions{
+		Watcher:          fw,
+		WatchPaths:       []string{"/fake"},
+		Restart:          restart,
+		DebounceInterval: 10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	go func() { _, _ = sup.Run(ctx) }()
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Emit 10 rapid changes.
+	for i := 0; i < 10; i++ {
+		fw.emit(OpWrite, "/fake/x.ts")
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+	cancel()
+
+	mu.Lock()
+	peak := goroutinePeak
+	mu.Unlock()
+
+	// At most 2 goroutines: debounce coalesces restarts, plus the
+	// edge case where a new generation just started when events arrive.
+	if peak > 3 {
+		t.Errorf("goroutine peak = %d, want <= 3 (unbounded fan-out)", peak)
 	}
 }

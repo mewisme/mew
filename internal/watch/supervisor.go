@@ -13,12 +13,10 @@ import (
 // DefaultDebounceInterval is the quiet period before a restart after file changes.
 const DefaultDebounceInterval = 200 * time.Millisecond
 
-// DefaultTerminationTimeout is how long the supervisor waits for a child
-// to exit after cancelling its context before giving up.
-const DefaultTerminationTimeout = 10 * time.Second
-
 // RestartFunc starts a child process and blocks until it exits.
-// ctx is cancelled to request graceful termination.
+// ctx is cancelled to request graceful termination. The function must
+// guarantee that the child process tree is terminated and reaped before
+// returning. Callers rely on this contract to sequence generations.
 type RestartFunc func(ctx context.Context) (int, error)
 
 // SupervisorOptions configures the watch-restart loop.
@@ -29,10 +27,6 @@ type SupervisorOptions struct {
 	ClearScreen      bool
 	DebounceInterval time.Duration
 	OnRestart        func(reason string)
-
-	// TerminationTimeout is how long to wait for a child to exit after
-	// cancelling its context. Zero means DefaultTerminationTimeout.
-	TerminationTimeout time.Duration
 
 	// Graph is the logical dependency graph. When non-nil the supervisor
 	// registers Graph.WatchPaths(), filters events through
@@ -55,14 +49,16 @@ func NewSupervisor(opts SupervisorOptions) *Supervisor {
 	if opts.DebounceInterval <= 0 {
 		opts.DebounceInterval = DefaultDebounceInterval
 	}
-	if opts.TerminationTimeout <= 0 {
-		opts.TerminationTimeout = DefaultTerminationTimeout
-	}
 	return &Supervisor{opts: opts}
 }
 
 // Run starts the watch-restart loop. Blocks until ctx is cancelled or
 // an unrecoverable error occurs.
+//
+// Shutdown guarantee: the supervisor never starts generation N+1 until
+// generation N's RestartFunc has returned, confirming the child process
+// tree is terminated and reaped. A timeout is never treated as
+// successful child shutdown.
 func (s *Supervisor) Run(ctx context.Context) (int, error) {
 	w := s.opts.Watcher
 	if w == nil {
@@ -152,7 +148,11 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 		}
 	}()
 
-	termTimeout := s.opts.TerminationTimeout
+	type childResult struct {
+		code int
+		err  error
+	}
+
 	lastCode := 0
 	generation := 0
 	for {
@@ -169,16 +169,10 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 
 		childCtx, cancelChild := context.WithCancel(ctx)
 
-		childDone := make(chan struct {
-			code int
-			err  error
-		}, 1)
+		childDone := make(chan childResult, 1)
 		go func() {
 			code, err := s.opts.Restart(childCtx)
-			childDone <- struct {
-				code int
-				err  error
-			}{code, err}
+			childDone <- childResult{code, err}
 		}()
 
 		select {
@@ -187,7 +181,7 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 			select {
 			case <-ctx.Done():
 				cancelChild()
-				s.waitChild(childDone, termTimeout)
+				<-childDone
 				return lastCode, ctx.Err()
 			default:
 			}
@@ -199,10 +193,11 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 				Generation: generation,
 			})
 			cancelChild()
-			result := s.waitChild(childDone, termTimeout)
+			result := <-childDone
 			lastCode = result.code
 			if result.err != nil && result.err != context.Canceled {
 				fmt.Fprintf(os.Stderr, "watch: %v\n", result.err)
+				return lastCode, result.err
 			}
 			s.reconcile(g, lastCode, w)
 			generation++
@@ -217,6 +212,7 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 			})
 			if result.err != nil && result.err != context.Canceled {
 				fmt.Fprintf(os.Stderr, "watch: %v\n", result.err)
+				return lastCode, result.err
 			}
 			s.reconcile(g, lastCode, w)
 			if s.opts.OnRestart != nil {
@@ -239,7 +235,7 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 
 		case <-watcherDone:
 			cancelChild()
-			s.waitChild(childDone, termTimeout)
+			<-childDone
 			trace.Emit(ctx, trace.CatWatch, trace.TypeWatchShutdown, trace.WatchData{
 				Reason: "watcher channel closed unexpectedly",
 			})
@@ -247,7 +243,7 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 
 		case <-ctx.Done():
 			cancelChild()
-			s.waitChild(childDone, termTimeout)
+			<-childDone
 			trace.Emit(ctx, trace.CatWatch, trace.TypeWatchShutdown, trace.WatchData{
 				Reason: "context cancelled",
 			})
@@ -259,28 +255,6 @@ func (s *Supervisor) Run(ctx context.Context) (int, error) {
 		case <-triggerRestart:
 		default:
 		}
-	}
-}
-
-// waitChild waits for the child to exit, with a timeout after which a
-// warning is logged. The caller must have already cancelled the child
-// context.
-func (s *Supervisor) waitChild(childDone <-chan struct {
-	code int
-	err  error
-}, timeout time.Duration) struct {
-	code int
-	err  error
-} {
-	select {
-	case result := <-childDone:
-		return result
-	case <-time.After(timeout):
-		fmt.Fprintf(os.Stderr, "watch: child did not exit within %v; continuing\n", timeout)
-		return struct {
-			code int
-			err  error
-		}{code: -1, err: fmt.Errorf("child termination timeout after %v", timeout)}
 	}
 }
 
