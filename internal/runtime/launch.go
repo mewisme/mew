@@ -592,67 +592,112 @@ func tokenizeNodeOptions(val string) []string {
 	return toks
 }
 
+// testHookBaseEnv, when set, overrides os.Environ() as the source of host
+// environment entries. Only tests may set this.
+var testHookBaseEnv func() []string
+
 func buildEnv(envOverlay []string, planEnvChanges []string) []string {
+	return buildEnvOS(envOverlay, planEnvChanges, runtime.GOOS)
+}
+
+// buildEnvOS is buildEnv parameterized by platform so tests can exercise
+// Windows normalization semantics on any OS.
+func buildEnvOS(envOverlay []string, planEnvChanges []string, goos string) []string {
 	base := os.Environ()
+	if testHookBaseEnv != nil {
+		base = testHookBaseEnv()
+	}
+	normalize := func(key string) string { return envKeyNormalizeOS(key, goos) }
+	isWindows := goos == "windows"
 
 	// Build set of keys already in host environment.
 	// Host/shell environment takes precedence over dotenv files.
+	// On Windows, keys are normalized case-insensitively so Path and PATH
+	// are recognized as the same variable.
 	hostKeys := make(map[string]bool, len(base))
 	for _, kv := range base {
-		for i := 0; i < len(kv); i++ {
-			if kv[i] == '=' {
-				hostKeys[kv[:i]] = true
-				break
-			}
-		}
+		key := envKey(kv)
+		hostKeys[normalize(key)] = true
 	}
 
 	// Apply dotenv overlay only for keys not already in host env.
 	// Plan env changes (internal runtime needs) always apply.
-	overlay := make(map[string]string)
+	// On Windows, normalizing prevents casing variants from creating
+	// duplicate logical variables.
+	type kvEntry struct {
+		key string // preferred spelling
+		val string
+	}
+	overlayMap := make(map[string]*kvEntry)
+	overlayOrder := make([]string, 0) // normalized keys in insertion order
+
 	for _, kv := range envOverlay {
-		for i := 0; i < len(kv); i++ {
-			if kv[i] == '=' {
-				key := kv[:i]
-				if !hostKeys[key] {
-					overlay[key] = kv[i+1:]
-				}
-				break
+		key, val, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		normalized := normalize(key)
+		if !hostKeys[normalized] {
+			if _, exists := overlayMap[normalized]; !exists {
+				overlayOrder = append(overlayOrder, normalized)
 			}
+			overlayMap[normalized] = &kvEntry{key: key, val: val}
 		}
 	}
 	for _, kv := range planEnvChanges {
-		for i := 0; i < len(kv); i++ {
-			if kv[i] == '=' {
-				overlay[kv[:i]] = kv[i+1:]
-				break
-			}
+		key, val, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
 		}
+		normalized := normalize(key)
+		if _, exists := overlayMap[normalized]; !exists {
+			overlayOrder = append(overlayOrder, normalized)
+		}
+		overlayMap[normalized] = &kvEntry{key: key, val: val}
 	}
 
-	if len(overlay) == 0 {
+	if len(overlayMap) == 0 && !isWindows {
 		return base
 	}
 
-	// Build output: host env (minus overridden keys) + overlay.
-	out := make([]string, 0, len(base)+len(overlay))
+	// Build output: host env (minus overridden keys, deduped on Windows) + overlay.
+	seen := make(map[string]bool, len(base)+len(overlayMap))
+	out := make([]string, 0, len(base)+len(overlayMap))
 	for _, kv := range base {
-		key := kv
-		for i := 0; i < len(kv); i++ {
-			if kv[i] == '=' {
-				key = kv[:i]
-				break
-			}
-		}
-		if _, replaced := overlay[key]; replaced {
+		key := envKey(kv)
+		normalized := normalize(key)
+		if _, replaced := overlayMap[normalized]; replaced {
 			continue
 		}
+		if seen[normalized] {
+			continue // skip Windows duplicate host entries
+		}
+		seen[normalized] = true
 		out = append(out, kv)
 	}
-	for k, v := range overlay {
-		out = append(out, k+"="+v)
+	for _, normalized := range overlayOrder {
+		entry := overlayMap[normalized]
+		out = append(out, entry.key+"="+entry.val)
 	}
 	return out
+}
+
+// envKey extracts the key from a KEY=VALUE string.
+func envKey(kv string) string {
+	if i := strings.IndexByte(kv, '='); i >= 0 {
+		return kv[:i]
+	}
+	return kv
+}
+
+// envKeyNormalizeOS returns a case-normalized form of an environment variable key
+// for identity comparison. On Windows, environment keys are case-insensitive;
+// uppercase provides a stable canonical form. On Unix, the key is returned as-is.
+func envKeyNormalizeOS(key, goos string) string {
+	if goos == "windows" {
+		return strings.ToUpper(key)
+	}
+	return key
 }
 
 // storagePath computes the persistent localStorage path for the project
