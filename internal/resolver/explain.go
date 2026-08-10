@@ -391,13 +391,24 @@ func (e *Engine) ExplainPeer(ctx context.Context, root, peerName string, opts Re
 
 // FormatConflictTree renders a human-readable conflict tree.
 func FormatConflictTree(tree ConflictTree) string {
+	return FormatConflictTreeWithSymbols(tree, " -> ", " -- ")
+}
+
+// FormatConflictTreeWithSymbols is like FormatConflictTree but uses the
+// caller-provided arrow and separator glyphs so presentation can supply
+// canonical symbols without the resolver importing presentation.
+func FormatConflictTreeWithSymbols(tree ConflictTree, arrow, separator string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "peer %s\n", tree.Peer)
-	formatConflictNode(&b, tree.Root, 0)
+	formatConflictNodeWithSymbols(&b, tree.Root, 0, arrow, separator)
 	return b.String()
 }
 
 func formatConflictNode(b *strings.Builder, n ConflictNode, depth int) {
+	formatConflictNodeWithSymbols(b, n, depth, " -> ", " -- ")
+}
+
+func formatConflictNodeWithSymbols(b *strings.Builder, n ConflictNode, depth int, arrow, separator string) {
 	prefix := strings.Repeat("  ", depth)
 	line := prefix + n.Constraint
 	if n.RequiringPackage != "" {
@@ -408,7 +419,7 @@ func formatConflictNode(b *strings.Builder, n ConflictNode, depth int) {
 	}
 	fmt.Fprintln(b, line)
 	if len(n.SearchPath) > 0 {
-		fmt.Fprintf(b, "%ssearch: %s\n", prefix, strings.Join(n.SearchPath, " -> "))
+		fmt.Fprintf(b, "%ssearch: %s\n", prefix, strings.Join(n.SearchPath, " "+arrow+" "))
 	}
 	if len(n.Candidates) > 0 {
 		fmt.Fprintf(b, "%scandidates: %s\n", prefix, strings.Join(n.Candidates, ", "))
@@ -426,6 +437,6 @@ func formatConflictNode(b *strings.Builder, n ConflictNode, depth int) {
 		fmt.Fprintf(b, "%sremediation: %s\n", prefix, n.Remediation)
 	}
 	for _, child := range n.Children {
-		formatConflictNode(b, child, depth+1)
+		formatConflictNodeWithSymbols(b, child, depth+1, arrow, separator)
 	}
 }

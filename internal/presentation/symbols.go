@@ -1,5 +1,7 @@
 package presentation
 
+import "fmt"
+
 // Symbols holds status glyphs for Unicode or ASCII output.
 // These are the canonical reusable UI glyph definitions for the terminal.
 // Each field is semantic; callers request rendering via [RenderSemanticSymbol] or
@@ -115,6 +117,12 @@ func ValidateSymbolWidths(s Symbols) []string {
 		cells := CellWidth(c.val)
 		if cells != runes {
 			bad = append(bad, c.name)
+		}
+	}
+	// Validate spinner frames: each must be exactly 1 cell wide.
+	for i, frame := range s.SpinnerFrames {
+		if CellWidth(frame) != 1 {
+			bad = append(bad, fmt.Sprintf("SpinnerFrame[%d] width=%d", i, CellWidth(frame)))
 		}
 	}
 	return bad

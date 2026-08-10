@@ -154,7 +154,8 @@ func renderHumanTrace(cmd *cobra.Command, events <-chan trace.Event, sessionID s
 
 	lines := make([]string, 0, 2)
 	lines = append(lines, r.Status(presentation.StatusLine{
-		Text: fmt.Sprintf("Trace session %s", sessionID),
+		Status: presentation.StatusInfo,
+		Text:   fmt.Sprintf("Trace session %s", sessionID),
 	}))
 
 	counts := map[trace.Category]int{}
@@ -163,7 +164,8 @@ func renderHumanTrace(cmd *cobra.Command, events <-chan trace.Event, sessionID s
 	}
 	if len(counts) == 0 {
 		lines = append(lines, r.Status(presentation.StatusLine{
-			Text: "No trace events emitted.",
+			Status: presentation.StatusInfo,
+			Text:   "No trace events emitted.",
 		}))
 	} else {
 		kvs := make([]presentation.KeyValue, 0, len(counts))

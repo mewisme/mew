@@ -10,6 +10,7 @@ type StaticRenderer interface {
 	Error(ErrorView) string
 	Table(TableModel) string
 	PackageDeltas([]PackageDelta) string
+	SpecifierDeltas([]SpecifierDelta) string
 	PlainText(string) string
 	// Symbol returns a status glyph, colored when the theme supports it.
 	Symbol(status Status) string

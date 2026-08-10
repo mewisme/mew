@@ -42,7 +42,7 @@ func newHistoryCmd() *cobra.Command {
 			}
 			g := ownerFlags(cmd.Root())
 			r := g.mustStaticRenderer(cmd)
-			return writeStaticOut(cmd, r.Table(snapshotTableModel(list)))
+			return writeStaticOut(cmd, r.Table(snapshotTableModel(list, r.Settings().Symbols)))
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print timeline as JSON")

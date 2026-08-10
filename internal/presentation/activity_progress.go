@@ -266,10 +266,7 @@ func (r *ActivityProgressRenderer) drawLocked() {
 		return
 	}
 
-	frame := r.frames[r.frameIdx%len(r.frames)]
-	if r.settings.UseColor {
-		frame = r.theme.Running.Sprint(frame)
-	}
+	frame := RenderSpinnerFrame(r.settings.Symbols, r.theme, r.frameIdx, r.settings.UseColor)
 
 	label := op.Kind
 	if op.CurrentItem != "" {

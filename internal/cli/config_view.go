@@ -20,18 +20,6 @@ import (
 // detection, and scope conversion have exactly one implementation each. The
 // models carry resolved data only: they read no files and resolve no config.
 
-// cfgPlaceholder is the human placeholder for nil/empty config values.
-// Set by setConfigPlaceholder during command execution to honor --ascii.
-var cfgPlaceholder = "—"
-
-// setConfigPlaceholder selects the config value placeholder from the canonical symbol set.
-func setConfigPlaceholder(useUnicode bool) {
-	if useUnicode {
-		cfgPlaceholder = presentation.UnicodeSymbols.Placeholder
-	} else {
-		cfgPlaceholder = presentation.ASCIISymbols.Placeholder
-	}
-}
 
 // ── scope conversion ──────────────────────────────────────────
 
@@ -638,10 +626,10 @@ func resolveConfigExplain(eff *config.Effective, key string, scope configScope) 
 func formatConfigValue(v any) string {
 	switch t := v.(type) {
 	case nil:
-		return cfgPlaceholder
+		return presentation.UnicodeSymbols.Placeholder
 	case string:
 		if t == "" {
-			return cfgPlaceholder
+			return presentation.UnicodeSymbols.Placeholder
 		}
 		return t
 	case bool:

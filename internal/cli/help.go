@@ -89,8 +89,29 @@ func configureGroupedHelp(root *cobra.Command) {
 	cobra.AddTemplateFunc("mewBareScripts", renderBareScripts)
 	cobra.AddTemplateFunc("mewGroupedCommands", renderGroupedCommands)
 	cobra.AddTemplateFunc("mewCommandSections", renderCommandSections)
-	cobra.AddTemplateFunc("dimParens", presentation.DimParentheses)
-	cobra.AddTemplateFunc("styleMew", presentation.StyleMewName)
+
+	// Override help/usage to inject theme-aware dimParens/styleMew closures.
+	// Template funcs must be closures because Go template pipelines pass only the
+	// piped value; closures capture settings resolved from the command at render time.
+	defaultHelp := root.HelpFunc()
+	defaultUsage := root.UsageFunc()
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		g := ownerFlags(cmd.Root())
+		s := g.helpSettings()
+		cobra.AddTemplateFunc("dimParens", presentation.DimParenthesesFunc(s))
+		cobra.AddTemplateFunc("styleMew", presentation.StyleMewNameFunc(s))
+		cobra.AddTemplateFunc("ellipsis", func() string { return s.Symbols.Ellipsis })
+		defaultHelp(cmd, args)
+	})
+	root.SetUsageFunc(func(cmd *cobra.Command) error {
+		g := ownerFlags(cmd.Root())
+		s := g.helpSettings()
+		cobra.AddTemplateFunc("dimParens", presentation.DimParenthesesFunc(s))
+		cobra.AddTemplateFunc("styleMew", presentation.StyleMewNameFunc(s))
+		cobra.AddTemplateFunc("ellipsis", func() string { return s.Symbols.Ellipsis })
+		return defaultUsage(cmd)
+	})
+
 	for _, cmd := range root.Commands() {
 		applyCommandHelp(cmd)
 	}
@@ -133,7 +154,7 @@ Additional help topics:
   {{rpad (styleMew .CommandPath) 28}} {{.Short}}{{end}}{{end}}
 {{- end}}
 Use "{{styleMew .CommandPath}} [command] --help" for more information about a command.
-{{printf "Use \"%s help <topic>\" for curated topics (errors, runner, lifecycle-trust, …)." (.CommandPath | styleMew) | dimParens}}
+{{printf "Use \"%s help <topic>\" for curated topics (errors, runner, lifecycle-trust, %s)." (.CommandPath | styleMew) (ellipsis) | dimParens}}
 `
 
 const groupedUsageTemplate = `Usage:{{if .Runnable}} {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
@@ -183,7 +204,9 @@ func aliasSuffix(cmd *cobra.Command) string {
 func formatCommandLine(cmd *cobra.Command) string {
 	name := cmd.Name() + ":"
 	line := fmt.Sprintf("  %-15s %s%s", name, cmd.Short, aliasSuffix(cmd))
-	return presentation.DimParentheses(presentation.StyleMewName(line))
+	g := ownerFlags(cmd.Root())
+	s := g.helpSettings()
+	return presentation.DimParentheses(presentation.StyleMewName(line, s), s)
 }
 
 func renderGroupedCommands(cmd *cobra.Command) string {
@@ -272,7 +295,9 @@ func renderCommandSections(cmd *cobra.Command) string {
 		}
 	}
 	if b.Len() > 0 {
-		return presentation.StyleMewName("\n" + b.String())
+		g := ownerFlags(cmd.Root())
+		s := g.helpSettings()
+		return presentation.StyleMewName("\n"+b.String(), s)
 	}
 	return ""
 }
@@ -324,7 +349,9 @@ func renderBareScripts(cmd *cobra.Command) string {
 	}
 	b.WriteString(strings.Join(show, ", "))
 	if total > bareMScriptListLimit {
-		fmt.Fprintf(&b, ", … and %d more", total-bareMScriptListLimit)
+		g := ownerFlags(cmd.Root())
+	s := g.helpSettings()
+	fmt.Fprintf(&b, ", %s and %d more", s.Symbols.Ellipsis, total-bareMScriptListLimit)
 	}
 	bin := rootBinaryName(cmd)
 	fmt.Fprintf(&b, "\n\nRun `%s run <script>` to execute.\n", bin)

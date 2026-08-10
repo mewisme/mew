@@ -48,7 +48,7 @@ func (r *plainRenderer) Notice(n Notice) string {
 }
 
 func (r *plainRenderer) Hint(h Hint) string {
-	arrow := r.settings.Symbols.Arrow
+	arrow := RenderSymbolRole(r.settings.Symbols, Theme{}, RoleArrow, false)
 	if arrow == "" {
 		return h.Message
 	}
@@ -87,6 +87,10 @@ func renderCompletionFooterPlain(f *CompletionFooter, settings EffectiveSettings
 
 func (r *plainRenderer) PackageDeltas(deltas []PackageDelta) string {
 	return formatPackageDeltas(deltas, r.settings, false, Theme{})
+}
+
+func (r *plainRenderer) SpecifierDeltas(deltas []SpecifierDelta) string {
+	return formatSpecifierDeltas(deltas, r.settings, false, Theme{})
 }
 
 func (r *plainRenderer) Table(m TableModel) string {
@@ -256,6 +260,7 @@ func formatPackageDeltasWithOptions(deltas []PackageDelta, settings EffectiveSet
 }
 
 func formatDeltaTruncationNotice(omitted int, color bool, theme Theme, settings EffectiveSettings) string {
+	// Structural arrow in truncation notice uses muted.
 	arrow := settings.Symbols.Arrow
 	if color {
 		arrow = applyStyle(theme.Muted, arrow, true)
@@ -292,20 +297,11 @@ func formatFlatPackageDeltas(deltas []PackageDelta, settings EffectiveSettings, 
 		var mark string
 		switch d.Kind {
 		case DeltaAdded:
-			mark = sym.Added
-			if color {
-				mark = applyStyle(theme.Added, mark, true)
-			}
+			mark = RenderSymbolRole(sym, theme, RoleAdded, color)
 		case DeltaRemoved:
-			mark = sym.Removed
-			if color {
-				mark = applyStyle(theme.Removed, mark, true)
-			}
+			mark = RenderSymbolRole(sym, theme, RoleRemoved, color)
 		default:
-			mark = sym.Updated
-			if color {
-				mark = applyStyle(theme.Updated, mark, true)
-			}
+			mark = RenderSymbolRole(sym, theme, RoleUpdated, color)
 		}
 		b.WriteString(mark)
 		b.WriteByte(' ')
@@ -352,6 +348,50 @@ func formatFlatPackageDeltas(deltas []PackageDelta, settings EffectiveSettings, 
 				ver = applyStyle(theme.Version, ver, true)
 			}
 			b.WriteString(ver)
+		}
+	}
+	return b.String()
+}
+
+func formatSpecifierDeltas(deltas []SpecifierDelta, settings EffectiveSettings, color bool, theme Theme) string {
+	if len(deltas) == 0 {
+		return ""
+	}
+	sym := settings.Symbols
+	var b strings.Builder
+	for i, d := range deltas {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		importer := d.Importer
+		if importer == "" {
+			importer = "."
+		}
+		kind := d.Kind
+		if kind != "" {
+			kind = " " + kind
+		}
+		updated := RenderSymbolRole(sym, theme, RoleUpdated, color)
+		b.WriteString(updated)
+		b.WriteByte(' ')
+		b.WriteString(importer)
+		b.WriteByte(' ')
+		b.WriteString(d.Name)
+		b.WriteString(kind)
+		b.WriteString(": ")
+		switch {
+		case d.Before == "" && d.After != "":
+			b.WriteString(RenderSymbolRole(sym, theme, RoleAdded, color))
+			b.WriteString(d.After)
+		case d.Before != "" && d.After == "":
+			b.WriteString(RenderSymbolRole(sym, theme, RoleRemoved, color))
+			b.WriteString(d.Before)
+		default:
+			b.WriteString(d.Before)
+			b.WriteByte(' ')
+			b.WriteString(RenderSymbolRole(sym, theme, RoleArrow, color))
+			b.WriteByte(' ')
+			b.WriteString(d.After)
 		}
 	}
 	return b.String()

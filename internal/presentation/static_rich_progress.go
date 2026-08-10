@@ -102,12 +102,6 @@ func (p *StaticRichProgressRenderer) OperationCompleted(ev diagnostics.Operation
 		st = StatusSkipped
 	case "cancelled":
 		st = StatusCancelled
-	case "added":
-		st = StatusSuccess // phase that added packages is success
-	case "updated":
-		st = StatusSuccess
-	case "removed":
-		st = StatusSuccess
 	default:
 		st = StatusError
 	}

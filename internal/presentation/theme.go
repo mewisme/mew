@@ -43,6 +43,9 @@ type Theme struct {
 	Pending *color.Color
 	// Skipped is the semantic style for skipped symbols (muted, not warning).
 	Skipped *color.Color
+
+	// Brand is the semantic style for the product/binary name (e.g. "m", "mx").
+	Brand *color.Color
 }
 
 // NewTheme builds a palette for mode. ThemeNone returns identity colors.
@@ -68,6 +71,7 @@ func noneTheme() Theme {
 		Added: id, AddedBold: id, Updated: id, UpdatedBold: id, Removed: id, RemovedBold: id, Reused: id,
 		Header: id, Label: id, Value: id,
 		Arrow: id, Running: id, Pending: id, Skipped: id,
+		Brand: id,
 	}
 }
 
@@ -102,6 +106,7 @@ func lightTheme() Theme {
 		Running:     color.New(color.FgCyan),
 		Pending:     color.New(color.FgHiBlack),
 		Skipped:     color.New(color.FgHiBlack),
+		Brand:       color.New(color.FgMagenta, color.Bold),
 	}
 }
 
@@ -118,10 +123,10 @@ func darkTheme() Theme {
 		Faint:       color.New(color.Faint),
 		Command:     color.New(color.FgHiCyan),
 		Package:     color.New(color.FgHiMagenta),
-		Version:     color.New(color.FgHiGreen),
+		Version:     color.New(color.Bold),
 		Path:        color.New(),
 		Code:        color.New(color.FgHiMagenta),
-		Number:      color.New(color.FgHiYellow),
+		Number:      color.New(color.Bold),
 		Added:       color.New(color.FgHiGreen),
 		AddedBold:   color.New(color.FgHiGreen, color.Bold),
 		Updated:     color.New(color.FgHiYellow),
@@ -131,11 +136,12 @@ func darkTheme() Theme {
 		Reused:      color.New(color.FgHiBlack),
 		Header:      color.New(color.FgHiWhite, color.Bold),
 		Label:       color.New(color.Faint),
-		Value:       color.New(color.FgHiWhite),
+		Value:       color.New(),
 		Arrow:       color.New(color.FgHiCyan),
 		Running:     color.New(color.FgHiCyan),
 		Pending:     color.New(color.FgHiBlack),
 		Skipped:     color.New(color.FgHiBlack),
+		Brand:       color.New(color.FgHiMagenta, color.Bold),
 	}
 }
 
@@ -172,6 +178,7 @@ func accessibleTheme() Theme {
 		Running:     plain,
 		Pending:     plain,
 		Skipped:     plain,
+		Brand:       bold,
 	}
 }
 

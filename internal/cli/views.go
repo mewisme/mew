@@ -111,7 +111,7 @@ func cacheVerifySummary(ok, bad, skip int) presentation.Summary {
 	}
 }
 
-func snapshotTableModel(list []snapshot.Snapshot) presentation.TableModel {
+func snapshotTableModel(list []snapshot.Snapshot, sym presentation.Symbols) presentation.TableModel {
 	cols := []presentation.TableColumn{
 		{Key: "id", Header: "ID", MinWidth: 8, Prefer: 16, Primary: true, Truncate: presentation.TruncateMiddle},
 		{Key: "created", Header: "CREATED", MinWidth: 8, Prefer: 24},
@@ -127,7 +127,7 @@ func snapshotTableModel(list []snapshot.Snapshot) presentation.TableModel {
 		rows = append(rows, map[string]string{
 			"id":      s.ID,
 			"created": s.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
-			"digest":  shortDigest(s.GraphDigest),
+			"digest":  shortDigest(s.GraphDigest, sym),
 			"delta":   snapshotDeltaSummary(s, older),
 		})
 	}

@@ -130,10 +130,10 @@ func (r *WorkspaceAggregateRenderer) WorkspaceSummary(ev diagnostics.WorkspaceSu
 			failed = append(failed, row)
 		}
 	}
-	sym := r.settings.Symbols
+	theme := NewTheme(r.settings.ThemeMode)
 	var b strings.Builder
 	if ev.Failed > 0 {
-		b.WriteString(sym.Error)
+		b.WriteString(RenderSemanticSymbol(r.settings.Symbols, theme, StatusError, r.settings.UseColor))
 		b.WriteByte(' ')
 		fmt.Fprintf(&b, "%d of %d tasks failed", ev.Failed, totalTasks(ev))
 		b.WriteByte('\n')
@@ -152,7 +152,7 @@ func (r *WorkspaceAggregateRenderer) WorkspaceSummary(ev diagnostics.WorkspaceSu
 		}
 		b.WriteByte('\n')
 	} else {
-		b.WriteString(sym.Success)
+		b.WriteString(RenderSemanticSymbol(r.settings.Symbols, theme, StatusSuccess, r.settings.UseColor))
 		b.WriteByte(' ')
 		fmt.Fprintf(&b, "%d tasks completed", ev.Completed)
 		b.WriteByte('\n')
@@ -182,33 +182,38 @@ func formatSummaryCounts(ev diagnostics.WorkspaceSummaryEvent, settings Effectiv
 }
 
 func formatTaskRow(row *WorkspaceTaskRow, settings EffectiveSettings) string {
-	sym := settings.Symbols
-	statusSym := sym.Pending
+	theme := NewTheme(settings.ThemeMode)
+	var st Status
 	label := row.Status
 	switch row.Status {
 	case "running", "start":
-		statusSym = sym.Running
+		st = StatusRunning
 		label = "running"
 	case "done":
-		statusSym = sym.Success
+		st = StatusSuccess
 		label = ""
 	case "fail":
-		statusSym = sym.Error
+		st = StatusError
 		label = ""
 	case "skip", "not-run":
-		statusSym = sym.Skipped
+		st = StatusSkipped
 		if row.Status == "not-run" {
 			label = "not run"
 		} else {
 			label = "skipped"
 		}
 	case "cancel":
-		statusSym = sym.Warning
+		st = StatusCancelled
 		label = "cancelled"
+	case "pending":
+		st = StatusPending
+	default:
+		st = StatusPending
 	}
+	statusSym := RenderSemanticSymbol(settings.Symbols, theme, st, settings.UseColor)
 	pkg := row.Package
 	if pkg == "" {
-		pkg = "?"
+		pkg = RenderSymbolRole(settings.Symbols, theme, RolePlaceholder, settings.UseColor)
 	}
 	script := row.Script
 	var b strings.Builder

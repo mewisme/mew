@@ -28,6 +28,23 @@ const (
 	ValueMuted
 )
 
+// SymbolRole is a semantic symbol role for non-status presentation symbols.
+// Status roles (Success, Warning, Error, etc.) use Status + RenderSemanticSymbol.
+// Mutation roles (Added, Updated, Removed), structural roles (Arrow, Bullet,
+// Ellipsis, Placeholder, Separator) use SymbolRole + RenderSymbolRole.
+type SymbolRole int
+
+const (
+	RoleAdded SymbolRole = iota
+	RoleUpdated
+	RoleRemoved
+	RoleArrow
+	RoleBullet
+	RoleEllipsis
+	RolePlaceholder
+	RoleSeparator
+)
+
 // StatusLine is a one-line command outcome.
 type StatusLine struct {
 	Status Status
@@ -93,6 +110,15 @@ type PackageDelta struct {
 type PackageDeltaOptions struct {
 	GroupByKind bool
 	MaxRows     int // 0 means unlimited.
+}
+
+// SpecifierDelta is one specifier mutation row (e.g. lockfile importer specifier changes).
+type SpecifierDelta struct {
+	Importer string
+	Name     string
+	Kind     string // e.g. "dev", "peer", "" for prod
+	Before   string
+	After    string
 }
 
 // maxSummaryPackageDeltas bounds human delta lists to prevent unbounded output.

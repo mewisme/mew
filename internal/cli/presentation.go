@@ -21,6 +21,29 @@ func (g *globalFlags) bindPresentation(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolVar(&g.accessible, "accessible", false, "accessible append-only output")
 }
 
+// helpSettings returns presentation settings for help/usage template rendering.
+// It avoids the full controller setup (no TTY detection, no dark-mode check).
+func (g *globalFlags) helpSettings() presentation.EffectiveSettings {
+	useColor := !g.noColor
+	useUnicode := !g.ascii
+	themeMode := presentation.ThemeLight
+	if !useColor {
+		themeMode = presentation.ThemeNone
+	} else if g.accessible {
+		themeMode = presentation.ThemeAccessible
+	} else if g.theme == "dark" {
+		themeMode = presentation.ThemeDark
+	}
+	return presentation.EffectiveSettings{
+		UseColor:   useColor,
+		UseUnicode: useUnicode,
+		ThemeMode:  themeMode,
+		Width:      80,
+		Symbols:    presentation.SelectSymbols(useUnicode),
+		BinaryName: g.invokedBinary,
+	}
+}
+
 // presentationInput builds resolver input from the parsed flags and the theme
 // bootstrap resolved from ui.theme. Theme is empty only before bootstrap runs,
 // which the resolver treats the same as "auto".

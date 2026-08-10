@@ -30,8 +30,8 @@ func formatError(view ErrorView, settings EffectiveSettings, color bool, theme T
 			title = "ERROR " + title
 		}
 	} else {
-		if sym := statusSymbol(settings.Symbols, StatusError); sym != "" {
-			title = applyStyle(theme.Error, sym, true) + " " + title
+		if sym := RenderSemanticSymbol(settings.Symbols, theme, StatusError, true); sym != "" {
+			title = sym + " " + title
 		}
 	}
 	if title != "" {
@@ -83,12 +83,9 @@ func formatError(view ErrorView, settings EffectiveSettings, color bool, theme T
 }
 
 func formatHintLine(h Hint, settings EffectiveSettings, color bool, theme Theme) string {
-	arrow := settings.Symbols.Arrow
+	arrow := RenderSymbolRole(settings.Symbols, theme, RoleArrow, color)
 	if arrow == "" {
 		return h.Message
-	}
-	if color {
-		arrow = applyStyle(theme.Primary, arrow, true)
 	}
 	return arrow + " " + h.Message
 }

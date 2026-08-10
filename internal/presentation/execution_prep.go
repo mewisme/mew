@@ -157,15 +157,9 @@ func RenderExecutionPrep(view ExecutionPrepView, settings EffectiveSettings) str
 		}
 	}
 
-	arrow := settings.Symbols.Arrow
-	if arrow == "" {
-		arrow = UnicodeSymbols.Arrow
-	}
+	arrow := RenderSymbolRole(settings.Symbols, theme, RoleArrow, settings.UseColor)
 
 	title := arrow + " " + strings.TrimSpace(view.Title)
-	if settings.UseColor {
-		title = applyStyle(theme.Primary, title, true)
-	}
 	lines = append(lines, title)
 
 	if len(view.Rows) > 0 {
