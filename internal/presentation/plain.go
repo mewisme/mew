@@ -99,6 +99,10 @@ func (r *plainRenderer) Error(view ErrorView) string {
 
 func (r *plainRenderer) PlainText(s string) string { return s }
 
+func (r *plainRenderer) Symbol(st Status) string {
+	return statusSymbol(r.settings.Symbols, st)
+}
+
 func statusSymbol(s Symbols, st Status) string {
 	switch st {
 	case StatusSuccess:

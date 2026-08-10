@@ -163,7 +163,7 @@ func RenderExecutionPrep(view ExecutionPrepView, settings EffectiveSettings) str
 
 	arrow := settings.Symbols.Arrow
 	if arrow == "" {
-		arrow = "→"
+		arrow = UnicodeSymbols.Arrow
 	}
 
 	title := arrow + " " + strings.TrimSpace(view.Title)

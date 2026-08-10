@@ -365,7 +365,7 @@ func newConfigListCmd(g *globalFlags) *cobra.Command {
 			}
 			opts := configListOptions{prefix: prefix, changed: changed, inclDefaults: inclDefaults}
 			entries := resolveConfigList(eff, scope, opts)
-			view := configListView{Scope: scope, Entries: entries}
+			view := configListView{Scope: scope, Entries: entries, InclDefaults: inclDefaults}
 
 			if configOutputStructured(g, cmd) {
 				return writeConfigListJSON(cmd, view, showOrigin)
@@ -387,6 +387,12 @@ func writeConfigListHuman(g *globalFlags, cmd *cobra.Command, view configListVie
 	// Narrow terminals and accessible mode get one field per line; the same
 	// threshold the shared KeyValues renderer uses.
 	stacked := settings.Width < 60 || settings.Accessible
+	theme := presentation.NewTheme(settings.ThemeMode)
+	useColor := settings.UseColor
+	dot := settings.Symbols.Running
+	if useColor && theme.Primary != nil {
+		dot = theme.Primary.Sprint(dot)
+	}
 
 	var b strings.Builder
 	b.WriteString(configScopeLabel(view.Scope))
@@ -418,23 +424,34 @@ func writeConfigListHuman(g *globalFlags, cmd *cobra.Command, view configListVie
 			b.WriteString("\n")
 			lastGroup = e.Group
 		}
-		b.WriteString(configListRow(e, keyWidth, showOrigin, stacked))
+		b.WriteString(configListRow(e, keyWidth, showOrigin, stacked, dot, theme, useColor))
 		b.WriteString("\n")
 	}
 	if len(view.Entries) > 0 {
 		b.WriteString("\n")
 	}
 	fmt.Fprintf(&b, "%d configured, %d defaults\n", configured, defaulted)
+	if !view.InclDefaults && configured == 0 {
+		fmt.Fprint(&b, "Add --defaults to see schema defaults.\n")
+	}
 	return writeStaticOut(cmd, b.String())
 }
 
 // configListRow renders one list row, padded to keyWidth so columns align on
 // visible width rather than byte length.
-func configListRow(e configEntryView, keyWidth int, showOrigin, stacked bool) string {
+func configListRow(e configEntryView, keyWidth int, showOrigin, stacked bool, dot string, theme presentation.Theme, useColor bool) string {
+	indicator := "  "
+	if e.Configured {
+		indicator = dot + " "
+	}
+	key := e.Key
+	if useColor && theme.Muted != nil {
+		key = theme.Muted.Sprint(key)
+	}
 	if stacked {
 		var b strings.Builder
-		b.WriteString("  ")
-		b.WriteString(e.Key)
+		b.WriteString(indicator)
+		b.WriteString(key)
 		b.WriteString("\n    ")
 		b.WriteString(e.Value)
 		if showOrigin {
@@ -451,7 +468,7 @@ func configListRow(e configEntryView, keyWidth int, showOrigin, stacked bool) st
 	if pad < 0 {
 		pad = 0
 	}
-	line := "  " + e.Key + strings.Repeat(" ", pad+2) + e.Value
+	line := indicator + key + strings.Repeat(" ", pad+2) + e.Value
 	if showOrigin {
 		line += "  [" + e.Source + "]"
 		if e.Path != "" {
@@ -489,6 +506,7 @@ func newConfigExplainCmd(g *globalFlags) *cobra.Command {
 	var flags configWriteFlags
 	cmd := &cobra.Command{
 		Use:   "explain <key>",
+		Aliases: []string{"why"},
 		Short: "Show config key resolution chain",
 		Args:  cobra.ExactArgs(1),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -639,7 +657,8 @@ func newConfigEditCmd(g *globalFlags) *cobra.Command {
 			}
 
 			r := g.mustStaticRenderer(cmd)
-			return writeStaticOut(cmd, "✓ Config saved\n\n"+r.KeyValues([]presentation.KeyValue{
+			sym := r.Symbol(presentation.StatusSuccess)
+			return writeStaticOut(cmd, sym+" Config saved\n\n"+r.KeyValues([]presentation.KeyValue{
 				{Key: "Scope", Value: string(target.Scope)},
 				{Key: "File", Value: target.Path, Style: presentation.ValuePath},
 			}))
@@ -903,9 +922,9 @@ func configValidateView(r presentation.StaticRenderer, scope configScope, report
 	label := strings.ToUpper(string(scope)[:1]) + string(scope)[1:] + " configuration"
 	var b strings.Builder
 	if report.Valid {
-		fmt.Fprintf(&b, "✓ %s is valid\n\n", label)
+		fmt.Fprintf(&b, "%s %s is valid\n\n", r.Symbol(presentation.StatusSuccess), label)
 	} else {
-		fmt.Fprintf(&b, "× %s is invalid\n\n", label)
+		fmt.Fprintf(&b, "%s %s is invalid\n\n", r.Symbol(presentation.StatusError), label)
 	}
 	b.WriteString(r.KeyValues([]presentation.KeyValue{
 		{Key: "Keys", Value: strconv.Itoa(report.KeyCount())},
@@ -1048,8 +1067,9 @@ func writeConfigMigrationResult(g *globalFlags, cmd *cobra.Command, plan config.
 	if count == 0 {
 		return writeStaticOut(cmd, "Already canonical.")
 	}
-	return writeStaticOut(cmd, fmt.Sprintf("✓ Migrated %d key(s) in %s\n\n%s",
-		count, target.Path,
+	sym := r.Symbol(presentation.StatusSuccess)
+	return writeStaticOut(cmd, fmt.Sprintf("%s Migrated %d key(s) in %s\n\n%s",
+		sym, count, target.Path,
 		r.KeyValues([]presentation.KeyValue{
 			{Key: "Scope", Value: string(target.Scope)},
 			{Key: "File", Value: target.Path, Style: presentation.ValuePath},
@@ -1127,7 +1147,9 @@ func newConfigResetCmd(g *globalFlags) *cobra.Command {
 				return apperr.Wrap(apperr.IO, "config.reset", target.Path, err)
 			}
 			r := g.mustStaticRenderer(cmd)
-			return writeStaticOut(cmd, fmt.Sprintf("✓ Reset %s configuration\n\n%s\n\nEffective: defaults",
+			sym := r.Symbol(presentation.StatusSuccess)
+				return writeStaticOut(cmd, fmt.Sprintf("%s Reset %s configuration\n\n%s\n\nEffective: defaults",
+					sym,
 				scope,
 				r.KeyValues([]presentation.KeyValue{
 					{Key: "File", Value: target.Path, Style: presentation.ValuePath},

@@ -11,6 +11,8 @@ type StaticRenderer interface {
 	Table(TableModel) string
 	PackageDeltas([]PackageDelta) string
 	PlainText(string) string
+	// Symbol returns a status glyph, colored when the theme supports it.
+	Symbol(status Status) string
 	Settings() EffectiveSettings
 }
 

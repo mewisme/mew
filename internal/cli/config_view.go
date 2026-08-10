@@ -383,8 +383,9 @@ func (v configMutationView) json() configMutationJSON {
 
 // configListView is the filtered, ordered collection for `config list`.
 type configListView struct {
-	Scope   configScope
-	Entries []configEntryView
+	Scope        configScope
+	Entries      []configEntryView
+	InclDefaults bool
 }
 
 type configListJSON struct {
@@ -623,8 +624,11 @@ func resolveConfigExplain(eff *config.Effective, key string, scope configScope) 
 func formatConfigValue(v any) string {
 	switch t := v.(type) {
 	case nil:
-		return ""
+		return "—"
 	case string:
+		if t == "" {
+			return "—"
+		}
 		return t
 	case bool:
 		return strconv.FormatBool(t)

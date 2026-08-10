@@ -116,3 +116,22 @@ func (r *richRenderer) Error(view ErrorView) string {
 }
 
 func (r *richRenderer) PlainText(s string) string { return s }
+
+func (r *richRenderer) Symbol(st Status) string {
+	sym := statusSymbol(r.settings.Symbols, st)
+	if sym == "" {
+		return ""
+	}
+	switch st {
+	case StatusSuccess:
+		return applyStyle(r.theme.Success, sym, true)
+	case StatusWarning:
+		return applyStyle(r.theme.Warning, sym, true)
+	case StatusError:
+		return applyStyle(r.theme.Error, sym, true)
+	case StatusInfo:
+		return applyStyle(r.theme.Info, sym, true)
+	default:
+		return sym
+	}
+}

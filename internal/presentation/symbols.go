@@ -15,6 +15,9 @@ type Symbols struct {
 	Updated  string
 	Removed  string
 	Ellipsis string
+
+	// Placeholder for nil or empty values in human output.
+	Placeholder string
 }
 
 // UnicodeSymbols is the default rich glyph set.
@@ -32,6 +35,8 @@ var UnicodeSymbols = Symbols{
 	Updated:  "~",
 	Removed:  "-",
 	Ellipsis: "…",
+
+	Placeholder: "—",
 }
 
 // ASCIISymbols is the plain-safe fallback set.
@@ -49,6 +54,8 @@ var ASCIISymbols = Symbols{
 	Updated:  "~",
 	Removed:  "-",
 	Ellipsis: "...",
+
+	Placeholder: "-",
 }
 
 // SelectSymbols returns Unicode or ASCII glyphs.
@@ -79,6 +86,7 @@ func ValidateSymbolWidths(s Symbols) []string {
 		{"Updated", s.Updated},
 		{"Removed", s.Removed},
 		{"Ellipsis", s.Ellipsis},
+		{"Placeholder", s.Placeholder},
 	}
 	var bad []string
 	for _, c := range check {
