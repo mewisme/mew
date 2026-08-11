@@ -88,8 +88,8 @@ Last updated: 2026-08-12 (0057 stabilization gate).
 | 24.x | Certified | CI: 3 OS × Node 24 | Full capabilities |
 | 22.x (LTS) | Certified | CI: 3 OS × Node 22 | Full capabilities; primary target |
 | 20.x (LTS) | Certified | CI: 3 OS × Node 20 | Full capabilities |
-| 18.x (maintenance) | Certified | CI: 3 OS × Node 18 | Requires >= 18.19 for `module.register()` |
-| < 18.x | Unsupported | — | Minimum supported Node is 18.x |
+| >=18.19.0 (maintenance) | Certified | CI: 3 OS × Node 18 (latest), CI floor: Node 18.19 | `module.register()` available (experimental); minimum supported version |
+| < 18.19.0 | Unsupported | — | Lacks `module.register()`; rejected at launch with `ERR_M_RUNTIME_NODE_UNSUPPORTED` |
 
 ## Operating System Support
 

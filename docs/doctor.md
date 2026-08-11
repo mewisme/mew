@@ -93,7 +93,7 @@ loader bridge, watch backend, inspector, cache).
 
 | ID | Severity when failing | Notes |
 |---|---|---|
-| `node-capabilities` | fail | Node ≥18 with required preload/module-register capabilities |
+| `node-capabilities` | fail | Node ≥18.19.0 with required preload/module-register capabilities |
 | `transform-handshake` | fail | Real transform session start + auth handshake |
 | `transform-roundtrip` | fail | esbuild transforms a minimal TS fixture end-to-end |
 | `source-map` | warn | Transform emits a valid source map |

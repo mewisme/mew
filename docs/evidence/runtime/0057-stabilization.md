@@ -10,7 +10,7 @@ produced by `.github/workflows/runtime-cert.yml` for each push to this branch.
 
 - **Matrix**: 3 OS × 4 Node versions = 12 required cells
 - **OS**: ubuntu-latest, macos-latest, windows-latest
-- **Node**: 18.x, 20.x, 22.x (LTS), 24.x
+- **Node**: >=18.19.0 (18.x line, minimum floor), 20.x, 22.x (LTS), 24.x
 - **Commit binding**: Exact HEAD SHA. Report `commitSHA` must match the workflow `github.sha`.
   Reports bound to any other SHA are rejected as STALE.
 - **Fail-closed**: Missing report, wrong SHA, zero matched required tests, failed/skipped

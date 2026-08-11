@@ -624,7 +624,7 @@ func doctorCheckLoaderBridge(ctx context.Context, ac *Context) DoctorCheck {
 	if inst == nil {
 		check.Status = string(DoctorStatusFail)
 		check.Message = "node not found for loader bridge"
-		check.Remediation = "install Node.js 18+"
+		check.Remediation = "install Node.js >= 18.19.0"
 		return check
 	}
 
@@ -737,13 +737,13 @@ func doctorCheckNodeCapabilities(ctx context.Context) DoctorCheck {
 		check.Status = string(DoctorStatusFail)
 		check.Message = "node discovery failed"
 		check.Details = sanitizeErr(err)
-		check.Remediation = "install Node.js 18+ (m requires module-register, import-preload, require-preload)"
+		check.Remediation = "install Node.js >= 18.19.0 (m requires module-register, import-preload, require-preload)"
 		return check
 	}
 	if inst == nil {
 		check.Status = string(DoctorStatusFail)
 		check.Message = "node not found"
-		check.Remediation = "install Node.js 18+"
+		check.Remediation = "install Node.js >= 18.19.0"
 		return check
 	}
 	capSet := make(map[string]bool, len(inst.Capabilities))

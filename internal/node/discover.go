@@ -92,6 +92,13 @@ func normalizeVersion(raw string) (string, error) {
 	return fmt.Sprintf("%d.%d.%d", major, minor, patch), nil
 }
 
+// MinRuntimeVersion is the minimum Node version required for Mew runtime
+// augmentation. Node 18.19.0 is the first 18.x release that includes
+// module.register() as an experimental API (stable from 20.6.0).
+// Versions below this floor cannot run Mew's augmented runtime and will be
+// rejected with ERR_M_RUNTIME_NODE_UNSUPPORTED before any launch attempt.
+const MinRuntimeVersion = "18.19.0"
+
 func detectCapabilities(version string) []string {
 	var caps []string
 	parts := strings.SplitN(version, ".", 2)
@@ -132,4 +139,55 @@ func parseMinor(parts []string) int {
 	minorParts := strings.SplitN(parts[1], ".", 2)
 	n, _ := strconv.Atoi(minorParts[0])
 	return n
+}
+
+// CompareVersion compares two normalized semver strings (M.m.p).
+// Returns -1 if a < b, 0 if a == b, 1 if a > b.
+// Returns 0 and false when either string is not a valid M.m.p version.
+func CompareVersion(a, b string) (int, bool) {
+	ma, mia, pa, okA := parseSemver(a)
+	mb, mib, pb, okB := parseSemver(b)
+	if !okA || !okB {
+		return 0, false
+	}
+	if ma != mb {
+		if ma < mb {
+			return -1, true
+		}
+		return 1, true
+	}
+	if mia != mib {
+		if mia < mib {
+			return -1, true
+		}
+		return 1, true
+	}
+	if pa < pb {
+		return -1, true
+	}
+	if pa > pb {
+		return 1, true
+	}
+	return 0, true
+}
+
+// parseSemver parses major.minor.patch from a normalized version string.
+func parseSemver(v string) (major, minor, patch int, ok bool) {
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) < 2 {
+		return 0, 0, 0, false
+	}
+	var err error
+	major, err = strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	minor, err = strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	if len(parts) >= 3 {
+		patch, _ = strconv.Atoi(parts[2])
+	}
+	return major, minor, patch, true
 }

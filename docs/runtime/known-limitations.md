@@ -138,12 +138,16 @@ Stale takeover is ABA-safe: the lock directory is atomically renamed to a tombst
 
 | Node version | Status |
 |---|---|
-| 18.x | Supported |
-| 20.x | Supported |
-| 22.x | Supported (primary) |
-| 24.x | Supported |
+| >=18.19.0 | Supported (maintenance) |
+| >=20.6.0 | Supported |
+| >=22.0.0 | Supported (primary) |
+| >=24.0.0 | Supported |
 
-Node 16.x and earlier are unsupported. The minimum supported Node version is 18.x.
+Node 16.x and earlier are unsupported. The minimum supported Node version is
+18.19.0 — the first 18.x release to include `module.register()` (experimental
+in 18.19, stable from 20.6). Runtime augmentation requires `module.register()`
+for loader registration and tsconfig path resolution. Node 18.0–18.18 will be
+rejected with `ERR_M_RUNTIME_NODE_UNSUPPORTED` before any launch attempt.
 
 ## Gated Features
 

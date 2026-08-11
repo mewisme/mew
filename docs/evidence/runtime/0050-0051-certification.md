@@ -27,15 +27,15 @@ Both runs verified against the exact same commit SHA (`6831061`).
 
 | Platform | Node version | Result |
 |---|---|---|
-| Linux (amd64) | 18.x (maintenance) | Pass |
+| Linux (amd64) | 18.x (latest, >=18.19.0 at test time) | Pass |
 | Linux (amd64) | 20.x (LTS) | Pass |
 | Linux (amd64) | 22.x (current) | Pass |
 | Linux (amd64) | 24.x (next) | Pass |
-| macOS (arm64) | 18.x (maintenance) | Pass |
+| macOS (arm64) | 18.x (latest, >=18.19.0 at test time) | Pass |
 | macOS (arm64) | 20.x (LTS) | Pass |
 | macOS (arm64) | 22.x (current) | Pass |
 | macOS (arm64) | 24.x (next) | Pass |
-| Windows (amd64) | 18.x (maintenance) | Pass |
+| Windows (amd64) | 18.x (latest, >=18.19.0 at test time) | Pass |
 | Windows (amd64) | 20.x (LTS) | Pass |
 | Windows (amd64) | 22.x (current) | Pass |
 | Windows (amd64) | 24.x (next) | Pass |

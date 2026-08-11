@@ -201,7 +201,16 @@ func hasCap(caps []string, name string) bool {
 }
 
 // enforceCapabilities verifies the Node installation supports required features.
+// enforceCapabilities verifies the Node installation supports required features.
 func enforceCapabilities(inst *node.Installation, entrypoint string) error {
+	// Explicit version floor check: produce a clear diagnostic when the Node
+	// version is below the minimum required for runtime augmentation.
+	if cmp, ok := node.CompareVersion(inst.NormalizedVersion, node.MinRuntimeVersion); ok && cmp < 0 {
+		return apperr.New(apperr.RuntimeNodeUnsupported, "runtime.plan", inst.NormalizedVersion,
+			fmt.Sprintf("Node %s is below minimum supported version %s (module.register required for runtime augmentation)",
+				inst.NormalizedVersion, node.MinRuntimeVersion))
+	}
+
 	capSet := make(map[string]bool, len(inst.Capabilities))
 	for _, c := range inst.Capabilities {
 		capSet[c] = true
