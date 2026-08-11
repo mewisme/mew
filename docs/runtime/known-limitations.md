@@ -61,16 +61,17 @@ Documented as of 0052-0057 implementation. Each entry includes the limitation, i
 **Limitation**: Worker threads inherit the preload chain and transform
 capabilities from the main thread (Issue 19). Worker-specific transform
 configuration (separate tsconfig) is not supported. Custom loaders
-registered via `--loader` on the parent are not propagated to workers.
+registered via `--loader` on the parent are propagated to workers
+(Issue 8).
 
 **Impact**: Workers use the same transform options as the main thread
 entrypoint. Multi-package monorepos where workers need different tsconfig
-settings are not supported. Workers requiring custom ESM loader hooks must
-register them explicitly.
+settings are not supported. Workers receive the same custom loader chain
+as the parent; per-worker loader overrides are not supported.
 
 **Resolution**: Per-worker transform configuration planned for 0060+.
-Custom loader propagation to workers may be revisited with Node's evolving
-loader API.
+Per-worker custom loader configuration may be revisited with Node's
+evolving loader API.
 
 ### Web Storage
 

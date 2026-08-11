@@ -68,8 +68,9 @@ if (isMainThread) {
   delete process.env.MEW_TRANSFORM_DEP_TRACE_ROOT;
 
   // Store for worker propagation (Issue 19).
+  // userLoaders added below after MEW_USER_LOADERS is read.
   if (endpoint && token) {
-    _mewCredentials = { endpoint, token, options, optsDigest, configDir, depTraceFile, depTraceRoot };
+    _mewCredentials = { endpoint, token, options, optsDigest, configDir, depTraceFile, depTraceRoot, userLoaders: '' };
   }
 
   // Register the TypeScript loader with credentials passed via
@@ -90,6 +91,10 @@ if (isMainThread) {
         // Register user loaders first (reverse order, outermost hooks win).
         const userLoadersRaw = process.env.MEW_USER_LOADERS || '';
         delete process.env.MEW_USER_LOADERS;
+        // Store for worker propagation (Issue 8).
+        if (_mewCredentials) {
+          _mewCredentials.userLoaders = userLoadersRaw;
+        }
         if (userLoadersRaw) {
           const userLoaders = userLoadersRaw.split('\n').filter(function (u) { return u.length > 0; });
           // Reverse iteration: last-registered = first-called (LIFO chain).
@@ -268,6 +273,10 @@ if (isMainThread) {
         if (_mewCredentials.depTraceRoot) {
           e.MEW_TRANSFORM_DEP_TRACE_ROOT = _mewCredentials.depTraceRoot;
         }
+        // Propagate user loaders to child processes (Issue 8).
+        if (_mewCredentials.userLoaders) {
+          e.MEW_USER_LOADERS = _mewCredentials.userLoaders;
+        }
         return e;
       }
 
@@ -355,22 +364,9 @@ if (isMainThread) {
               wExecArgv = wAug;
             }
 
-            // Build worker env: clone source, strip MEW_TRANSFORM_*, inject real creds.
-            var wSrcEnv = options.env || process.env;
-            var wEnv = {};
-            var wSrcKeys = Object.keys(wSrcEnv);
-            for (var wsi = 0; wsi < wSrcKeys.length; wsi++) {
-              var wsk = wSrcKeys[wsi];
-              if (wsk.length >= 15 && wsk.toUpperCase().indexOf('MEW_TRANSFORM_') === 0) continue;
-              wEnv[wsk] = wSrcEnv[wsk];
-            }
-            wEnv.MEW_TRANSFORM_ENDPOINT = _mewCredentials.endpoint;
-            wEnv.MEW_TRANSFORM_TOKEN = _mewCredentials.token;
-            wEnv.MEW_TRANSFORM_OPTIONS = _mewCredentials.options;
-            wEnv.MEW_TRANSFORM_OPTS_DIGEST = _mewCredentials.optsDigest;
-            wEnv.MEW_TRANSFORM_CONFIG_DIR = _mewCredentials.configDir;
-            if (_mewCredentials.depTraceFile) wEnv.MEW_TRANSFORM_DEP_TRACE_FILE = _mewCredentials.depTraceFile;
-            if (_mewCredentials.depTraceRoot) wEnv.MEW_TRANSFORM_DEP_TRACE_ROOT = _mewCredentials.depTraceRoot;
+            // Build worker env: use shared helper (strips unsafe NODE_OPTIONS,
+            // injects MEW_TRANSFORM_* and MEW_USER_LOADERS).
+            var wEnv = _mewAugmentEnv(options.env);
 
             // Clone options to avoid mutating caller's object.
             var wOpts = {};
@@ -564,6 +560,11 @@ if (isMainThread) {
   delete process.env.MEW_TRANSFORM_DEP_TRACE_ROOT;
 
   if (endpoint && token) {
+    // Register user loaders first (reverse order, outermost hooks win).
+    // Read MEW_USER_LOADERS from process.env before deleting (Issue 8).
+    var userLoadersRaw = process.env.MEW_USER_LOADERS || '';
+    delete process.env.MEW_USER_LOADERS;
+
     // Register the TypeScript loader with credentials via module.register().
     var register;
     try { register = require('node:module').register; } catch (_) {}
@@ -574,7 +575,14 @@ if (isMainThread) {
         const tsLoader = pathToFileURL(path.join(__dirname, 'ts-loader.mjs')).href;
         const parentURL = pathToFileURL(__filename).href;
 
-        delete process.env.MEW_USER_LOADERS;
+        if (userLoadersRaw) {
+          var userLoaders = userLoadersRaw.split('\n').filter(function (u) { return u.length > 0; });
+          for (var i = userLoaders.length - 1; i >= 0; i--) {
+            try {
+              register(userLoaders[i], parentURL, { parentURL: parentURL, data: {}, transferList: [] });
+            } catch (_) {}
+          }
+        }
 
         register(tsLoader, parentURL, {
           parentURL: parentURL,
@@ -629,12 +637,36 @@ if (isMainThread) {
           }
 
           // Build worker env from user env or inherited process.env.
+          // Strip MEW_TRANSFORM_* from user-supplied env (defense in depth),
+          // then inject real credentials and user loaders (Issue 8).
           var wSrcEnv = wOptions.env || process.env;
           var wEnv = {};
           var wSrcKeys = Object.keys(wSrcEnv);
           for (var wsi = 0; wsi < wSrcKeys.length; wsi++) {
             var wsk = wSrcKeys[wsi];
             if (wsk.length >= 15 && wsk.toUpperCase().indexOf('MEW_TRANSFORM_') === 0) continue;
+            // Strip unsafe NODE_OPTIONS flags from user-supplied env.
+            if (wsk === 'NODE_OPTIONS' || (wsk.length === 12 && wsk.toUpperCase() === 'NODE_OPTIONS')) {
+              var stripped = (function(val) {
+                if (!val || typeof val !== 'string') return '';
+                var toks = val.match(/"[^"]*"|'[^']*'|\S+/g);
+                if (!toks) return '';
+                var out = [];
+                var skipNext = false;
+                var unsafe = { '--require': true, '--import': true, '--loader': true, '--experimental-loader': true };
+                for (var ti = 0; ti < toks.length; ti++) {
+                  var t = toks[ti];
+                  if (skipNext) { skipNext = false; continue; }
+                  if (/^--(require|import|loader|experimental-loader)=/.test(t)) continue;
+                  if (unsafe[t]) { skipNext = true; continue; }
+                  if (/^-r/.test(t)) continue;
+                  out.push(t);
+                }
+                return out.join(' ');
+              })(wSrcEnv[wsk]);
+              if (stripped) wEnv[wsk] = stripped;
+              continue;
+            }
             wEnv[wsk] = wSrcEnv[wsk];
           }
           wEnv.MEW_TRANSFORM_ENDPOINT = endpoint;
@@ -644,6 +676,10 @@ if (isMainThread) {
           wEnv.MEW_TRANSFORM_CONFIG_DIR = configDir;
           if (depTraceFile) wEnv.MEW_TRANSFORM_DEP_TRACE_FILE = depTraceFile;
           if (depTraceRoot) wEnv.MEW_TRANSFORM_DEP_TRACE_ROOT = depTraceRoot;
+          // Propagate user loaders to nested workers (Issue 8).
+          if (userLoadersRaw) {
+            wEnv.MEW_USER_LOADERS = userLoadersRaw;
+          }
 
           var wOpts = {};
           var wOptKeys = Object.keys(wOptions);

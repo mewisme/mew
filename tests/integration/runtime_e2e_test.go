@@ -2537,6 +2537,62 @@ func TestRuntimeE2EWorkerNested(t *testing.T) {
 	}
 }
 
+// --- Issue 8: Worker custom-loader propagation ---
+
+func TestRuntimeE2EWorkerCustomLoaderInvoked(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	_ = os.Remove(filepath.Join(proj, "output.txt"))
+	code, _ := runMWithRuntime(t, proj, "--loader", "./loader-log.mjs", "worker-loader.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if !strings.Contains(out, "loader-log:resolve:") {
+		t.Fatalf("custom loader not invoked in worker; output:\n%s", out)
+	}
+	if !strings.Contains(out, "worker-loader:libValue=resolved-lib-ts") {
+		t.Fatalf("worker did not complete TypeScript import; output:\n%s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerCustomLoaderOnce(t *testing.T) {
+	skipWithoutNode(t)
+	proj := runtimeE2EFixture(t)
+	_ = os.Remove(filepath.Join(proj, "output.txt"))
+	code, _ := runMWithRuntime(t, proj, "--loader", "./loader-log.mjs", "worker-loader-once.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	if out != "cred-grabber-count=1" {
+		t.Fatalf("credential-grabber must appear exactly once in worker execArgv; got: %s", out)
+	}
+}
+
+func TestRuntimeE2EWorkerCustomLoaderPlusTS(t *testing.T) {
+	skipWithoutNode(t)
+	if !nodeMeetsMinimum(t, 20, 0) {
+		t.Skip("TS execution in workers requires Node >= 20")
+	}
+	proj := runtimeE2EFixture(t)
+	_ = os.Remove(filepath.Join(proj, "output.txt"))
+	// Use worker-ts-loader.mjs which preserves loader output (reads before write).
+	code, _ := runMWithRuntime(t, proj, "--loader", "./loader-log.mjs", "worker-ts-loader.mjs")
+	if code != 0 {
+		t.Fatalf("exit=%d", code)
+	}
+	out := readOutput(t, proj)
+	// Worker must successfully import TypeScript AND the custom loader
+	// must have been invoked during worker module resolution.
+	if !strings.Contains(out, "libValue=resolved-lib-ts") {
+		t.Fatalf("worker did not import TypeScript; output:\n%s", out)
+	}
+	if !strings.Contains(out, "loader-log:resolve:") {
+		t.Fatalf("custom loader not invoked in worker alongside ts-loader; output:\n%s", out)
+	}
+}
+
 // --- helpers ---
 
 func writeFile(t *testing.T, path, content string) {
