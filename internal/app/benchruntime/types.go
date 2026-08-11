@@ -95,6 +95,7 @@ type Compare struct {
 // CompareDetail is a single metric's comparison against a baseline.
 type CompareDetail struct {
 	MetricID         MetricID `json:"metricId"`
+	Category         Category `json:"category,omitempty"`
 	CurrentMedianNs  int64    `json:"currentMedianNs"`
 	BaselineMedianNs int64    `json:"baselineMedianNs"`
 	DeltaPct         float64  `json:"deltaPct"`
@@ -120,6 +121,7 @@ type BaselineEnv struct {
 type BaselineMetric struct {
 	ID       MetricID `json:"id"`
 	Unit     string   `json:"unit"`
+	Category Category `json:"category,omitempty"`
 	MedianNs int64    `json:"medianNs"`
 }
 

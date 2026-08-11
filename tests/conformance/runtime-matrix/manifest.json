@@ -73,6 +73,33 @@
       "run": "TestConformance(Failure|ExitCode)",
       "required": true,
       "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-soak-watch",
+      "title": "Watch mode soak: rapid start/stop cycles, goroutine leak detection",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformanceSoakWatchCycles",
+      "required": false,
+      "probe": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-soak-worker",
+      "title": "Worker thread soak: rapid create/destroy cycles, goroutine leak detection",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformanceSoakWorkerCycles",
+      "required": false,
+      "probe": true,
+      "platforms": ["linux", "darwin", "windows"]
+    },
+    {
+      "id": "runtime-soak-transform",
+      "title": "Transform service recovery soak: repeated transform invocations, goroutine leak detection",
+      "package": "./tests/conformance/runtime",
+      "run": "TestConformanceSoakTransformRecovery",
+      "required": false,
+      "probe": true,
+      "platforms": ["linux", "darwin", "windows"]
     }
   ]
 }

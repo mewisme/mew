@@ -46,7 +46,7 @@ func compareBaseline(path string, result Result) (Compare, error) {
 
 	blByID := make(map[string]BaselineMetric)
 	for _, m := range bl.Measurements {
-		key := baselineMetricKey(m.ID, m.Unit)
+		key := baselineMetricKey(m.ID, m.Unit, m.Category)
 		if _, exists := blByID[key]; exists {
 			return Compare{}, apperr.New(apperr.Manifest, "bench runtime", path,
 				fmt.Sprintf("duplicate baseline metric %s/%s", m.ID, m.Unit))
@@ -67,7 +67,7 @@ func compareBaseline(path string, result Result) (Compare, error) {
 	allPass := true
 
 	for _, cur := range result.Measurements {
-		mKey := baselineMetricKey(cur.ID, cur.Unit)
+		mKey := baselineMetricKey(cur.ID, cur.Unit, cur.Category)
 		bl, ok := blByID[mKey]
 		if !ok {
 			return Compare{}, apperr.New(apperr.Manifest, "bench runtime", path,
@@ -89,6 +89,7 @@ func compareBaseline(path string, result Result) (Compare, error) {
 
 		details = append(details, CompareDetail{
 			MetricID:         cur.ID,
+			Category:         cur.Category,
 			CurrentMedianNs:  cur.Aggregate.MedianNs,
 			BaselineMedianNs: bl.MedianNs,
 			DeltaPct:         deltaPct,
@@ -111,6 +112,10 @@ func compareBaseline(path string, result Result) (Compare, error) {
 }
 
 // baselineMetricKey builds a unique key for a baseline metric entry.
-func baselineMetricKey(id MetricID, unit string) string {
-	return string(id) + "/" + unit
+func baselineMetricKey(id MetricID, unit string, cat Category) string {
+	key := string(id) + "/" + unit
+	if cat != "" {
+		key += "/" + string(cat)
+	}
+	return key
 }

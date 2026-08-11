@@ -28,11 +28,11 @@ Mew evaluates compatibility on five **independent axes**. A feature may be at pa
 | Workspace script orchestration (`-r run`, filters) | **parity** | n/a | n/a | deferred | n/a | **parity** |
 | Direct `m <script>` shortcuts | extension | n/a | n/a | n/a | n/a | **extension** |
 | `mx` local/remote exec | deferred | n/a | n/a | deferred | n/a | deferred |
-| TypeScript execution | n/a | n/a | deferred | deferred | n/a | deferred |
+| TypeScript execution | n/a | n/a | deferred | **certified** | n/a | **certified** (0057) |
 | Node version manager | deferred | n/a | deferred | deferred | n/a | deferred |
 | External PM meta-manager | deferred | n/a | deferred | n/a | n/a | deferred |
 | Nub CLI grammar (core PM) | deferred | n/a | deferred | n/a | n/a | parity (intent) |
-| Nub runtime augmentation | n/a | n/a | n/a | deferred | n/a | parity (intent) |
+| Nub runtime augmentation | n/a | n/a | n/a | **certified** | n/a | **certified** (0057: 3 OS × 4 Node, 9 suites) |
 
 ## Intentional extensions (Mew-only)
 

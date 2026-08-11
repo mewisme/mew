@@ -569,8 +569,8 @@ func TestCompareBaselineOverallVerdictFailsWhenAnyMetricFails(t *testing.T) {
 		Environment:   BaselineEnv{OS: "linux", Arch: "amd64"},
 		ThresholdPct:  10.0,
 		Measurements: []BaselineMetric{
-			{ID: MetricStartupLatency, Unit: UnitNanoseconds, MedianNs: 1000},
-			{ID: MetricTransformLatency, Unit: UnitNanoseconds, MedianNs: 1000},
+			{ID: MetricStartupLatency, Unit: UnitNanoseconds, Category: "", MedianNs: 1000},
+			{ID: MetricTransformLatency, Unit: UnitNanoseconds, Category: CategoryCold, MedianNs: 1000},
 		},
 	}
 	tmp := writeBaselineTemp(t, bl)
