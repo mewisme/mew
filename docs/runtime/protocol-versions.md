@@ -1,6 +1,6 @@
 # Runtime Protocol Versions
 
-Frozen as of 0057 runtime stabilization gate (2026-08-12). All versions below are stable. Changes require a migration path, a backward-compat window or explicit break notice, and an update to this document in the same commit.
+Current as of 0057 runtime stabilization gate (2026-08-12). Version freeze certified (exit criterion PASS); overall gate has one pending CI criterion. Changes to frozen versions require a migration path, a backward-compat window or explicit break notice, and an update to this document in the same commit. Versions in the "Related Persistent Formats" section are owned by their respective MVPs, not by 0057.
 
 ## Transform IPC
 
@@ -76,8 +76,7 @@ Frozen as of 0057 runtime stabilization gate (2026-08-12). All versions below ar
 
 | Component | Version | Source |
 |---|---|---|
-| Go-test report schema | `2` | `internal/conformance/report.go:ReportSchemaVersion` |
-| Runner report schema | `1` | `internal/conformance/runner_report.go` (if exists) |
+| Conformance report schema | `2` | `internal/conformance/report.go:ReportSchemaVersion` |
 
 ## Related Persistent Formats
 
@@ -86,8 +85,9 @@ Versions of formats the runtime stabilization gate depends on (defined in their 
 | Format | Version | Source |
 |---|---|---|
 | Manifest (`package.json` normalized) | `1` | `internal/manifest/manifest.go:SchemaVersion` |
-| Lockfile | `3` | `internal/lockfile/mlock/format.go:lockfileVersion` |
-| Graph | `3` | `internal/graph/graph.go:SchemaVersion` |
+| Native m.lock | `3` | `internal/lockfile/mlock/document.go:LockfileVersion` |
+| Graph (canonical) | `3` | `internal/graph/types.go:SchemaVersion` |
+| Graph cache (internal) | `1` | `internal/graph/types.go:CacheSchemaVersion` |
 | Loss report | `1` | `internal/lockfile/interface.go:LossReportSchemaVersion` |
 | Release train config | `1` | `internal/releasetrain/releasetrain.go:SchemaVersion` |
 | Registry packument cache | `1` | `internal/registry/packument.go:CacheSchemaVersion` |
@@ -95,7 +95,10 @@ Versions of formats the runtime stabilization gate depends on (defined in their 
 
 ## Change Policy
 
-- Versions in this document are **frozen** as of 0057 stabilization gate completion (2026-08-12).
-- Bumping a version requires: (1) a migration path for existing data, (2) a backward-compat window or explicit break notice, (3) an update to this document in the same commit, (4) an ADR for breaking changes to frozen schemas.
+- Runtime protocol/schema versions in this document are **freeze-pending** as of 0057 stabilization gate (2026-08-12). Version freeze certified (exit criterion PASS); overall gate has one pending CI criterion.
+- Bumping a frozen version requires: (1) a migration path for existing data, (2) a backward-compat window or explicit break notice, (3) an update to this document in the same commit, (4) an ADR for breaking changes to frozen schemas.
+- Non-runtime versions in "Related Persistent Formats" are owned by their respective MVPs (see `docs/schema-freeze.md`).
 - New persistent formats must be versioned from their first commit.
+- Transform IPC protocol changes after freeze require: client and server synchronized to the same version; a handshake negotiation path for v2-v3 migration; stale cache auto-purged on cache schema bump.
+- Runtime asset manifest schema changes after freeze require: backward-compat acceptance of prior schema version; per-asset SHA-256 integrity verification; regeneration via `make assets`.
 - See `docs/schema-freeze.md` for the full schema freeze registry.

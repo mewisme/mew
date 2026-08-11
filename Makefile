@@ -340,6 +340,7 @@ cert-check: ## Verify certification consistency (no external tools)
 	$(GO) test ./internal/conformance/... -count=1
 	$(GO) test ./tests/conformance/runner/... -count=1
 	$(GO) run ./cmd/m conformance run runtime --filter runtime-failure --json >/dev/null
+	$(GO) test ./internal/archcheck/... -count=1 -run TestVersionDrift
 
 # Legacy certification aliases (preserved for compatibility).
 .PHONY: core-cert
