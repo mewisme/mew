@@ -63,7 +63,7 @@ Last updated: 2026-08-12 (0057 stabilization gate).
 |---|---|---|---|
 | `localStorage` (persistent) | Certified | `runtime-storage` | Per-project namespace, file-backed |
 | `sessionStorage` (per-realm) | Certified | `runtime-storage` | In-memory, non-persistent |
-| Cross-process locking | Certified | `runtime-storage` | Directory-based lock with heartbeat |
+| Cross-process locking | Certified | `runtime-storage` | Directory-based lock, PID-liveness stale policy |
 | Quota enforcement | Certified | `runtime-storage` | 5 MiB default; `MEW_STORAGE_QUOTA_BYTES` |
 | `StorageEvent` API | Unsupported | `docs/runtime/known-limitations.md` | Not planned |
 | Property-style access | Unsupported | `docs/runtime/known-limitations.md` | Use `getItem`/`setItem` only |

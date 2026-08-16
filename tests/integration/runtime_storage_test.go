@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -727,13 +728,15 @@ func TestRuntimeStorageOwnershipRace(t *testing.T) {
 	}
 }
 
-// --- Stale lock regression (P0: Issue 1) ---
+// --- Stale lock regression (P0: Issue 1, live owner never stale) ---
 
 func TestRuntimeStorageStaleLockRegression(t *testing.T) {
 	skipWithoutNode(t)
 	proj := storageFixture(t)
 
 	t.Setenv("MEW_STORAGE_TEST_HOOKS", "1")
+	// Short acquisition wait so in-fixture contender probes time out fast.
+	t.Setenv("MEW_STORAGE_LOCK_MAX_WAIT_MS", "400")
 	code, combined := runMWithRuntime(t, proj, "storage-stale-lock-regression.js")
 	if code != 0 {
 		t.Fatalf("exit %d:\n%s", code, combined)
@@ -741,5 +744,268 @@ func TestRuntimeStorageStaleLockRegression(t *testing.T) {
 	out := storageOutput(t, proj)
 	if out != "STALE_LOCK_OK" {
 		t.Errorf("stale lock regression failures:\n%s", out)
+	}
+}
+
+// --- Live-owner guard with real processes (P0 follow-up) ---
+
+const storageLockEnv = "MEW_LOCKTEST_PROC"
+
+// lockChildEnvVars are forwarded from the parent test to lock child processes.
+var lockChildEnvVars = []string{
+	"MEW_LOCKTEST_ROLE",
+	"MEW_LOCKTEST_FILE",
+	"MEW_LOCKTEST_READY_FILE",
+	"MEW_LOCKTEST_GO_FILE",
+	"MEW_LOCKTEST_DONE_FILE",
+	"MEW_LOCKTEST_RESULT_FILE",
+	"MEW_LOCKTEST_LOG",
+	"MEW_LOCKTEST_HOLD_MS",
+	"MEW_LOCKTEST_ITERS",
+	"MEW_STORAGE_LOCK_MAX_WAIT_MS",
+	"MEW_STORAGE_LOCK_GRACE_MS",
+}
+
+// spawnLockChild re-invokes the test binary as a storage-lock child process.
+func spawnLockChild(t *testing.T, env []string) *exec.Cmd {
+	t.Helper()
+	exe, err := exec.LookPath(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=^TestRuntimeStorageLockChildren$", "-test.count=1")
+	cmd.Env = append(os.Environ(), env...)
+	return cmd
+}
+
+// TestRuntimeStorageLockChildren is the child-process entry point for the
+// storage-lock live-owner guard tests.
+func TestRuntimeStorageLockChildren(t *testing.T) {
+	if os.Getenv(storageLockEnv) != "1" {
+		t.Skip("not a storage-lock child process")
+	}
+	projDir := os.Getenv("MEW_MUTATION_PROJ")
+	if projDir == "" {
+		t.Fatal("missing MEW_MUTATION_PROJ")
+	}
+	for _, name := range lockChildEnvVars {
+		if v := os.Getenv(name); v != "" {
+			t.Setenv(name, v)
+		}
+	}
+	code, out := runMWithRuntime(t, projDir, "storage-lock-children.js")
+	if code != 0 {
+		t.Fatalf("lock child %s exit=%d out=%s", os.Getenv("MEW_LOCKTEST_ROLE"), code, out)
+	}
+}
+
+// lockLogStats scans an ENTER/EXIT log and reports whether any two
+// critical sections overlapped.
+func lockLogStats(t *testing.T, logPath string) (enters, exits int, overlapped bool) {
+	t.Helper()
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read lock log: %v", err)
+	}
+	open := false
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		switch {
+		case strings.HasPrefix(line, "ENTER "):
+			enters++
+			if open {
+				overlapped = true
+			}
+			open = true
+		case strings.HasPrefix(line, "EXIT "):
+			exits++
+			if !open {
+				overlapped = true
+			}
+			open = false
+		}
+	}
+	if open {
+		overlapped = true
+	}
+	return enters, exits, overlapped
+}
+
+// TestRuntimeStorageLiveOwnerNeverStolen proves with real processes that
+// (1) a contender against a live lock owner times out instead of stealing,
+// (2) an abandoned (dead-owner) lock is reclaimed and contenders never hold
+// overlapping critical sections, and (3) sustained cross-process mutation
+// never overlaps.
+func TestRuntimeStorageLiveOwnerNeverStolen(t *testing.T) {
+	if os.Getenv(storageLockEnv) != "" || os.Getenv(storageConcurEnv) != "" {
+		return
+	}
+	skipWithoutNode(t)
+	proj := storageFixture(t)
+	projAbs, err := filepath.Abs(proj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetDir := t.TempDir()
+
+	baseEnv := []string{
+		storageLockEnv + "=1",
+		"MEW_MUTATION_PROJ=" + projAbs,
+		"MEW_STORAGE_TEST_HOOKS=1",
+	}
+
+	// Phase 1: live holder vs contender — contender must time out.
+	target1 := filepath.Join(targetDir, "phase1.json")
+	ready1 := filepath.Join(targetDir, "p1-ready")
+	done1 := filepath.Join(targetDir, "p1-done")
+	go1 := filepath.Join(targetDir, "p1-go")
+	res1 := filepath.Join(targetDir, "p1-result")
+
+	holder := spawnLockChild(t, append(baseEnv,
+		"MEW_LOCKTEST_ROLE=hold",
+		"MEW_LOCKTEST_FILE="+target1,
+		"MEW_LOCKTEST_READY_FILE="+ready1,
+		"MEW_LOCKTEST_DONE_FILE="+done1,
+		"MEW_LOCKTEST_HOLD_MS=3000",
+	))
+	if err := holder.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitForFiles(t, ready1)
+
+	contender := spawnLockChild(t, append(baseEnv,
+		"MEW_LOCKTEST_ROLE=try",
+		"MEW_LOCKTEST_FILE="+target1,
+		"MEW_LOCKTEST_GO_FILE="+go1,
+		"MEW_LOCKTEST_RESULT_FILE="+res1,
+		"MEW_STORAGE_LOCK_MAX_WAIT_MS=700",
+	))
+	if err := contender.Start(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if err := os.WriteFile(go1, []byte("go"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := contender.Wait(); err != nil {
+		t.Errorf("contender child failed: %v", err)
+	}
+	waitForFiles(t, done1)
+	if err := holder.Wait(); err != nil {
+		t.Errorf("holder child failed: %v", err)
+	}
+	res, err := os.ReadFile(res1)
+	if err != nil {
+		t.Fatalf("read contender result: %v", err)
+	}
+	if strings.Contains(string(res), "ACQUIRED") || !strings.Contains(string(res), "TIMEOUT") {
+		t.Errorf("contender stole lock from live holder: %s", res)
+	}
+
+	// Phase 2: abandoned owner (process exited holding the lock) — two
+	// contenders race for the dead lock.
+	target2 := filepath.Join(targetDir, "phase2.json")
+	ready2 := filepath.Join(targetDir, "p2-ready")
+	done2 := filepath.Join(targetDir, "p2-done")
+	go2 := filepath.Join(targetDir, "p2-go")
+	res2 := filepath.Join(targetDir, "p2-result")
+	log2 := filepath.Join(targetDir, "p2-log")
+
+	holder2 := spawnLockChild(t, append(baseEnv,
+		"MEW_LOCKTEST_ROLE=abandon",
+		"MEW_LOCKTEST_FILE="+target2,
+		"MEW_LOCKTEST_READY_FILE="+ready2,
+		"MEW_LOCKTEST_DONE_FILE="+done2,
+	))
+	if err := holder2.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitForFiles(t, done2)
+	// Reap the dead owner's process tree so kill(pid,0) reports ESRCH.
+	if err := holder2.Wait(); err != nil {
+		t.Errorf("abandon child failed: %v", err)
+	}
+	time.Sleep(500 * time.Millisecond) // owner PID fully gone + grace (400 ms)
+
+	for i := 0; i < 2; i++ {
+		c := spawnLockChild(t, append(baseEnv,
+			"MEW_LOCKTEST_ROLE=try",
+			"MEW_LOCKTEST_FILE="+target2,
+			"MEW_LOCKTEST_GO_FILE="+go2,
+			"MEW_LOCKTEST_RESULT_FILE="+res2,
+			"MEW_LOCKTEST_LOG="+log2,
+			"MEW_STORAGE_LOCK_GRACE_MS=400",
+			"MEW_STORAGE_LOCK_MAX_WAIT_MS=5000",
+		))
+		if err := c.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = c.Wait() })
+	}
+	time.Sleep(300 * time.Millisecond)
+	if err := os.WriteFile(go2, []byte("go"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Contenders exit on their own; poll for both result lines.
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		data, err := os.ReadFile(res2)
+		if err == nil && len(strings.Fields(string(data))) >= 4 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("contenders did not both report: %q", data)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	time.Sleep(500 * time.Millisecond) // let tail EXIT lines land
+
+	resData, err := os.ReadFile(res2)
+	if err != nil {
+		t.Fatalf("read contender results: %v", err)
+	}
+	acquired := strings.Count(string(resData), "ACQUIRED")
+	if runtime.GOOS != "windows" && acquired < 1 {
+		t.Errorf("dead owner lock never reclaimed by contenders: %q", resData)
+	}
+	if acquired > 0 {
+		if _, _, overlapped := lockLogStats(t, log2); overlapped {
+			t.Errorf("overlapping critical sections after dead-owner takeover: %q", resData)
+		}
+	}
+
+	// Phase 3: sustained contention — three processes, no overlap ever.
+	target3 := filepath.Join(targetDir, "phase3.json")
+	log3 := filepath.Join(targetDir, "p3-log")
+	if err := os.WriteFile(log3, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c := spawnLockChild(t, append(baseEnv,
+				"MEW_LOCKTEST_ROLE=overlap",
+				"MEW_LOCKTEST_FILE="+target3,
+				"MEW_LOCKTEST_LOG="+log3,
+				"MEW_LOCKTEST_ITERS=15",
+				"MEW_STORAGE_LOCK_MAX_WAIT_MS=15000",
+			))
+			if err := c.Start(); err != nil {
+				t.Error(err)
+				return
+			}
+			if err := c.Wait(); err != nil {
+				t.Errorf("overlap child failed: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	enters, exits, overlapped := lockLogStats(t, log3)
+	if overlapped {
+		t.Errorf("critical-section overlap detected (enters=%d exits=%d)", enters, exits)
+	}
+	if enters != 45 || exits != 45 {
+		t.Errorf("expected 45 paired critical sections, got enters=%d exits=%d", enters, exits)
 	}
 }

@@ -77,17 +77,17 @@ evolving loader API.
 
 **Limitation**: `localStorage` persists per-project (namespace = SHA-256 of project root) under the Mew cache directory. `sessionStorage` is per-realm, in-memory only, and does not survive process exit. Cross-project data sharing, origin-based isolation, and the full browser `StorageEvent` API are not supported. Property-style access (`storage.foo`) and `Object.keys(storage)` are deliberately unsupported — use `getItem`/`setItem`.
 
-**Lock protocol**: Cross-process localStorage mutations are serialized via a directory-based lock (mkdir is atomic on all supported platforms). Each lock acquisition writes an `owner.json` containing `lockId` (ABA guard), `pid`, `processStart`, and `heartbeat`. Staleness is determined by:
+**Lock protocol**: Cross-process localStorage mutations are serialized via a directory-based lock (mkdir is atomic on all supported platforms). Each lock acquisition writes an `owner.json` containing `lockId` (ABA guard) and `pid`. Staleness is determined by:
 
-1. Live process (`kill(pid,0)` succeeds) + recent heartbeat → never stale (lock age alone is never sufficient to steal a lock from a provably live owner)
-2. Live process + stale heartbeat (no refresh for >60s) → stale (PID reuse guard: the original owner stopped renewing, a new process got the same PID)
-3. Live process + legacy owner (pre-heartbeat) → not stale (conservative; PID reuse for legacy locks is a documented limitation)
-4. Dead process (ESRCH) → stale after 5s grace period
-5. Malformed/missing owner → stale after 5s grace period
+1. Owner PID alive or conservatively assumed alive (`kill(pid,0)` succeeds, or fails with EPERM/EACCES) → never stale, regardless of lock age. A synchronous critical section may legitimately run for any duration, so elapsed time is never proof of abandonment; contenders fail with an acquisition timeout (30 s default) instead of stealing.
+2. Dead process (ESRCH) → stale after 5 s grace period
+3. Malformed/missing owner → stale after 5 s grace period (bounded grace so a contender cannot steal during owner publication)
+
+There is deliberately no heartbeat lease. A previous design refreshed a heartbeat around writes and treated a stale heartbeat plus a live PID as "PID reused, lock abandoned" — that let a live owner's lock be stolen whenever a critical section ran longer than the heartbeat threshold, so heartbeat age was removed as stale evidence entirely.
 
 Stale takeover is ABA-safe: the lock directory is atomically renamed to a tombstone before a replacement lock is created. On release, the owner verifies `lockId` before deleting the canonical lock directory — an old owner whose lock was taken over cannot delete the successor's lock.
 
-**Windows process liveness**: `process.kill(pid, 0)` works on all platforms including Windows. The previous StaleLockMaxAge age-based fallback (which could steal a live owner's lock after 60s) has been replaced with the heartbeat protocol described above. PID reuse is mitigated by the heartbeat mechanism.
+**Windows process liveness and PID reuse**: `process.kill(pid, 0)` is used on all platforms. EPERM/EACCES is treated as "possibly alive" — on Windows this can also be returned for a PID that no longer exists, so dead-owner recovery may be unavailable there and acquisition fails on timeout instead (conservative: never steal a possibly-live lock). PID reuse (a dead owner's PID reassigned to a live process) is a documented limitation: the lock is then held until the reused PID exits, because stock Node APIs cannot prove process identity beyond PID. `MEW_STORAGE_LOCK_MAX_WAIT_MS` / `MEW_STORAGE_LOCK_GRACE_MS` override the timings for tests.
 
 **Impact**: Packages using `getItem`/`setItem`/`removeItem`/`clear`/`key`/`length` work. Packages relying on `StorageEvent`, origin-based access control, or the `storage` event listener will not find those features. Moving a project directory changes its namespace and "loses" prior localStorage data (the old file remains but is no longer associated).
 
