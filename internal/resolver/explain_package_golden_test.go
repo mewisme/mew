@@ -58,7 +58,7 @@ func TestExplainPackageGolden(t *testing.T) {
 			gotJSON = append(gotJSON, '\n')
 
 			var buf bytes.Buffer
-			if err := resolver.FormatPackageExplanation(ex, &buf, false); err != nil {
+			if err := resolver.FormatPackageExplanation(ex, &buf); err != nil {
 				t.Fatal(err)
 			}
 			gotHuman := buf.String()

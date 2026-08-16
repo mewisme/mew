@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "environment": {
+    "os": "linux",
+    "arch": "amd64"
+  },
+  "thresholdPct": 10.0,
+  "measurements": [
+    {
+      "id": "runtime.startup.latency",
+      "unit": "ns",
+      "category": "",
+      "medianNs": 6601188
+    },
+    {
+      "id": "runtime.transform.latency",
+      "unit": "ns",
+      "category": "cold",
+      "medianNs": 1383512
+    },
+    {
+      "id": "runtime.transform.latency",
+      "unit": "ns",
+      "category": "warm",
+      "medianNs": 41221
+    },
+    {
+      "id": "runtime.execution.walltime",
+      "unit": "ns",
+      "category": "warm",
+      "medianNs": 235051333
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+# Fixture env files are test data, not secrets.
+!.env
+!.env.*

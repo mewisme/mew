@@ -23,6 +23,7 @@ func newBenchCmd() *cobra.Command {
 		comparePath string
 		benchCase   string
 		profile     string
+		timeOut     int
 	)
 	install := &cobra.Command{
 		Use:   "install",
@@ -92,12 +93,24 @@ func newBenchCmd() *cobra.Command {
 					prof = app.RunnerBenchProfile(profile)
 				}
 			}
+			if warmup < 0 {
+				return apperr.New(apperr.Usage, "bench runner", "", "--warmup must be >= 0")
+			}
+			if samples < 0 {
+				return apperr.New(apperr.Usage, "bench runner", "", "--samples must be >= 0")
+			}
+			if timeOut < 0 {
+				return apperr.New(apperr.Usage, "bench runner", "", "--timeout must be >= 0")
+			}
 			result, err := app.BenchRunner(cmd.Context(), ac, app.RunnerBenchOptions{
-				Profile: prof,
-				CaseID:  benchCase,
-				Compare: comparePath,
-				Output:  outputPath,
-				Force:   forceOut,
+				Profile:    prof,
+				CaseID:     benchCase,
+				Compare:    comparePath,
+				Output:     outputPath,
+				Force:      forceOut,
+				Samples:    samples,
+				Warmup:     warmup,
+				TimeoutSec: timeOut,
 			})
 			if err != nil {
 				return err
@@ -129,6 +142,9 @@ func newBenchCmd() *cobra.Command {
 	runner.Flags().StringVar(&comparePath, "compare", "", "compare against baseline JSON")
 	runner.Flags().StringVar(&benchCase, "case", "", "run one benchmark case id")
 	runner.Flags().StringVar(&profile, "profile", "", "benchmark profile: smoke|full (default smoke)")
+	runner.Flags().IntVar(&warmup, "warmup", 1, "discarded warmup iterations before sampling")
+	runner.Flags().IntVar(&samples, "samples", 5, "measured iterations for median/p95")
+	runner.Flags().IntVar(&timeOut, "timeout", 120, "per-iteration timeout in seconds")
 
 	cmd := &cobra.Command{
 		Use:     "benchmark",
@@ -137,6 +153,7 @@ func newBenchCmd() *cobra.Command {
 	}
 	cmd.AddCommand(install)
 	cmd.AddCommand(runner)
+	cmd.AddCommand(newBenchRuntimeCmd())
 	return cmd
 }
 

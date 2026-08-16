@@ -12,13 +12,24 @@ import (
 	"time"
 )
 
-const defaultGracePeriod = 10 * time.Second
+const (
+	defaultGracePeriod      = 10 * time.Second
+	defaultForceKillTimeout = 5 * time.Second
+)
+
+// ErrForceKillFailed is returned when a process cannot be terminated even
+// after a SIGKILL/taskkill /F /T and a bounded reap wait.
+var ErrForceKillFailed = errors.New("process: force kill failed, process not reaped")
 
 // ExecSupervisor is the production ProcessSupervisor using os/exec.
 type ExecSupervisor struct {
 	// GracePeriod is how long to wait after a graceful cancellation signal
 	// before force-killing the process tree. Zero means use defaultGracePeriod.
 	GracePeriod time.Duration
+
+	// ForceKillTimeout is how long to wait for a process to be reaped after
+	// force-killing the process tree. Zero means use defaultForceKillTimeout.
+	ForceKillTimeout time.Duration
 }
 
 func (s *ExecSupervisor) gracePeriod() time.Duration {
@@ -26,6 +37,13 @@ func (s *ExecSupervisor) gracePeriod() time.Duration {
 		return defaultGracePeriod
 	}
 	return s.GracePeriod
+}
+
+func (s *ExecSupervisor) forceKillTimeout() time.Duration {
+	if s == nil || s.ForceKillTimeout <= 0 {
+		return defaultForceKillTimeout
+	}
+	return s.ForceKillTimeout
 }
 
 // NewExecSupervisor returns a restricted-execution process supervisor.
@@ -81,6 +99,8 @@ func (s *ExecSupervisor) Wait(ctx context.Context, h *Handle) error {
 
 	select {
 	case err := <-waitDone:
+		// Clean up orphaned grandchildren that inherited the process group.
+		killProcessTree(eh.cmd)
 		if err == nil {
 			return nil
 		}
@@ -97,23 +117,24 @@ func (s *ExecSupervisor) Wait(ctx context.Context, h *Handle) error {
 		// Wait for graceful exit or timeout
 		graceTimer := time.NewTimer(s.gracePeriod())
 		select {
-		case err := <-waitDone:
+		case <-waitDone:
 			graceTimer.Stop()
-			if err == nil {
-				return nil
-			}
-			var exitErr *exec.ExitError
-			if errors.As(err, &exitErr) {
-				return &ExitError{Code: exitErr.ExitCode(), Err: err}
-			}
-			return err
+			// The process exited after we signalled it; cancellation
+			// was the cause regardless of exit code.
+			return ctx.Err()
 		case <-graceTimer.C:
 			// Grace period expired — force kill
 		}
 
 		killProcessTree(eh.cmd)
-		// Reap the killed process
-		<-waitDone
+		// Reap the killed process with a bounded wait.
+		forceTimer := time.NewTimer(s.forceKillTimeout())
+		select {
+		case <-waitDone:
+			forceTimer.Stop()
+		case <-forceTimer.C:
+			return fmt.Errorf("%w (pid %d)", ErrForceKillFailed, h.PID)
+		}
 		return ctx.Err()
 	}
 }

@@ -90,7 +90,7 @@ func TestFormatPackageExplanationOverrideChain(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if err := resolver.FormatPackageExplanation(ex, &buf, false); err != nil {
+	if err := resolver.FormatPackageExplanation(ex, &buf); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()

@@ -17,72 +17,87 @@ type ExecutionPrepView struct {
 
 // MapEnvironmentPrepared builds a safe prep view from the frozen event + command label.
 // Digests are omitted unless debug is true. Absolute paths are never included.
-func MapEnvironmentPrepared(ev diagnostics.EnvironmentPreparedEvent, command string, debug bool) ExecutionPrepView {
-	title := "Running"
-	if command != "" {
-		title = "Running " + command
-	}
-	view := ExecutionPrepView{Title: title}
+func MapEnvironmentPrepared(
+	ev diagnostics.EnvironmentPreparedEvent,
+	command string,
+	debug bool,
+	ellipsis string,
+) ExecutionPrepView {
+	view := ExecutionPrepView{Title: runningTitle(command)}
+	source, env, network, integrity := mapPreparedLabels(ev)
 
-	sourceLabel, envLabel, networkLabel, integrityLabel := mapPreparedLabels(ev)
-	if sourceLabel != "" {
-		view.Rows = append(view.Rows, KeyValue{Key: "Source", Value: sourceLabel, Style: ValueMuted})
+	addRow := func(key, value string, kind ValueKind) {
+		if value != "" {
+			view.Rows = append(view.Rows, KeyValue{
+				Key:   key,
+				Value: value,
+				Style: kind,
+			})
+		}
 	}
-	if command != "" && sourceLabel != "project" {
-		view.Rows = append(view.Rows, KeyValue{Key: "Package", Value: command, Style: ValuePackage})
+
+	addRow("Source", source, ValuePlain)
+
+	if command != "" && source != "project" {
+		addRow("Package", command, ValuePackage)
 	}
-	if envLabel != "" {
-		view.Rows = append(view.Rows, KeyValue{Key: "Environment", Value: envLabel, Style: ValueMuted})
-	}
-	if networkLabel != "" {
-		view.Rows = append(view.Rows, KeyValue{Key: "Network", Value: networkLabel, Style: ValueMuted})
-	}
-	if integrityLabel != "" {
-		view.Rows = append(view.Rows, KeyValue{Key: "Integrity", Value: integrityLabel, Style: ValueMuted})
-	}
+
+	addRow("Environment", env, ValuePlain)
+	addRow("Network", network, ValuePlain)
+	addRow("Integrity", integrity, ValuePlain)
+
 	if debug {
-		if ev.IdentityDigest != "" {
-			view.Rows = append(view.Rows, KeyValue{Key: "Identity", Value: shortDigest(ev.IdentityDigest), Style: ValueMuted})
-		}
-		if ev.GraphDigest != "" {
-			view.Rows = append(view.Rows, KeyValue{Key: "Graph", Value: shortDigest(ev.GraphDigest), Style: ValueMuted})
-		}
+		addRow("Identity", shortDigest(ev.IdentityDigest, ellipsis), ValueMuted)
+		addRow("Graph", shortDigest(ev.GraphDigest, ellipsis), ValueMuted)
 	}
+
 	return view
 }
 
 // ProjectExecPrep builds a thin local run/exec banner without inventing EnvironmentPrepared.
 func ProjectExecPrep(command, packageName string) ExecutionPrepView {
-	title := "Running"
-	if command != "" {
-		title = "Running " + command
+	if packageName == "" {
+		packageName = command
 	}
-	view := ExecutionPrepView{Title: title}
-	view.Rows = append(view.Rows, KeyValue{Key: "Source", Value: "project", Style: ValueMuted})
-	pkg := packageName
-	if pkg == "" {
-		pkg = command
+
+	view := ExecutionPrepView{
+		Title: runningTitle(command),
+		Rows: []KeyValue{
+			{Key: "Source", Value: "project", Style: ValuePlain},
+		},
 	}
-	if pkg != "" {
-		view.Rows = append(view.Rows, KeyValue{Key: "Package", Value: pkg, Style: ValuePackage})
+
+	if packageName != "" {
+		view.Rows = append(view.Rows, KeyValue{
+			Key:   "Package",
+			Value: packageName,
+			Style: ValuePackage,
+		})
 	}
+
 	return view
 }
 
-func mapPreparedLabels(ev diagnostics.EnvironmentPreparedEvent) (source, env, network, integrity string) {
-	switch strings.ToLower(strings.TrimSpace(ev.Source)) {
-	case "project":
-		source = "project"
-	case "dlx":
-		source = "dlx"
+func runningTitle(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return "Running"
+	}
+	return "Running " + command
+}
+
+func mapPreparedLabels(
+	ev diagnostics.EnvironmentPreparedEvent,
+) (source, env, network, integrity string) {
+	sourceType := strings.ToLower(strings.TrimSpace(ev.Source))
+
+	switch sourceType {
+	case "project", "dlx", "capsule":
+		source = sourceType
 	case "snapshot":
 		source = "snapshot " + shortID(ev.IdentityDigest)
-	case "capsule":
-		source = "capsule"
 	default:
-		if ev.Source != "" {
-			source = ev.Source
-		}
+		source = ev.Source
 	}
 
 	switch strings.ToLower(strings.TrimSpace(ev.CacheState)) {
@@ -96,79 +111,103 @@ func mapPreparedLabels(ev diagnostics.EnvironmentPreparedEvent) (source, env, ne
 		env = "ephemeral"
 	}
 
-	switch strings.ToLower(strings.TrimSpace(ev.Source)) {
+	switch sourceType {
 	case "snapshot", "capsule":
-		// Authoritative LockedProviderPolicy: NetworkForbidden + VerificationRequired.
+		// Authoritative LockedProviderPolicy:
+		// NetworkForbidden + VerificationRequired.
 		if !ev.NetworkUsed {
 			network = "disabled"
 		}
 		env = "verified"
 	}
-	return source, env, network, ""
+
+	return
 }
 
 func shortID(digest string) string {
-	d := strings.TrimSpace(digest)
-	if len(d) >= 6 {
-		return d[:6]
-	}
-	if d == "" {
+	digest = strings.TrimSpace(digest)
+
+	switch {
+	case digest == "":
 		return "unknown"
+	case len(digest) >= 6:
+		return digest[:6]
+	default:
+		return digest
 	}
-	return d
 }
 
-func shortDigest(digest string) string {
-	d := strings.TrimSpace(digest)
-	if len(d) > 12 {
-		return d[:12] + "…"
+func shortDigest(digest, ellipsis string) string {
+	digest = strings.TrimSpace(digest)
+	if len(digest) > 12 {
+		return digest[:12] + ellipsis
 	}
-	return d
+	return digest
 }
 
 // RenderExecutionPrep formats a prep view with arrow title, optional stages, and KV rows.
 func RenderExecutionPrep(view ExecutionPrepView, settings EffectiveSettings) string {
-	sym := settings.Symbols
-	arrow := sym.Arrow
-	if arrow == "" {
-		arrow = "->"
-	}
-	var b strings.Builder
+	theme := NewTheme(settings.ThemeMode)
+	lines := make([]string, 0, len(view.Stages)+len(view.Rows)+1)
+
 	for _, stage := range view.Stages {
-		stage = strings.TrimSpace(stage)
-		if stage == "" {
-			continue
-		}
-		b.WriteString("  ")
-		b.WriteString(stage)
-		b.WriteByte('\n')
-	}
-	b.WriteString(arrow)
-	b.WriteByte(' ')
-	b.WriteString(strings.TrimSpace(view.Title))
-	if len(view.Rows) > 0 {
-		b.WriteByte('\n')
-		kv := NewStaticRenderer(settings).KeyValues(view.Rows)
-		// Indent KV block with two spaces for visual grouping.
-		for i, line := range strings.Split(kv, "\n") {
-			if i > 0 {
-				b.WriteByte('\n')
+		if stage = strings.TrimSpace(stage); stage != "" {
+			if settings.UseColor {
+				stage = applyStyle(theme.Faint, stage, true)
 			}
-			b.WriteString("  ")
-			b.WriteString(line)
+			lines = append(lines, "  "+stage)
 		}
 	}
-	return b.String()
+
+	arrow := RenderSymbolRole(settings.Symbols, theme, RoleActionArrow, settings.UseColor)
+
+	titleText := strings.TrimSpace(view.Title)
+	if settings.UseColor {
+		titleText = applyStyle(theme.Header, titleText, true)
+	}
+	title := arrow + " " + titleText
+	lines = append(lines, title)
+
+	if len(view.Rows) > 0 {
+		lines = append(lines, renderPrepRows(view.Rows, settings, theme)...)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func renderPrepRows(rows []KeyValue, settings EffectiveSettings, theme Theme) []string {
+	width := 0
+	for _, row := range rows {
+		width = max(width, len(row.Key))
+	}
+
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		key := fmt.Sprintf("%-*s", width, row.Key)
+		if settings.UseColor {
+			key = applyStyle(theme.Label, key, true)
+		}
+		val := styleValue(row.Value, row.Style, settings.UseColor, theme)
+
+		lines = append(lines,
+			fmt.Sprintf(" %s  %s", key, val),
+		)
+	}
+
+	return lines
 }
 
 // WriteExecutionPrep writes the prep banner to stderr (w).
-func WriteExecutionPrep(w io.Writer, view ExecutionPrepView, settings EffectiveSettings) {
+func WriteExecutionPrep(
+	w io.Writer,
+	view ExecutionPrepView,
+	settings EffectiveSettings,
+) {
 	if w == nil {
 		return
 	}
-	text := RenderExecutionPrep(view, settings)
-	if text == "" {
-		return
+
+	if text := RenderExecutionPrep(view, settings); text != "" {
+		_, _ = fmt.Fprintln(w, text)
 	}
-	_, _ = fmt.Fprintln(w, text)
 }

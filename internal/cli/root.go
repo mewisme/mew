@@ -21,14 +21,19 @@ func NewMRoot(info BuildInfo) *cobra.Command {
 	}
 	root := &cobra.Command{
 		Use:   use,
-		Short: "MewJS — JavaScript toolchain and package manager",
-		Long:  "MewJS (Mew) is a Go-based JavaScript toolchain and package manager for package management, scripts, and runtime augmentation.",
+		Short: "Mew — JavaScript toolchain and package manager",
+		Long:  "Mew is a Go-based JavaScript toolchain and package manager for packages, scripts, and runtime enhancements.",
 	}
 	root.Version = info.Version
+	root.Long += " " + versionSuffix(info)
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.DisableAutoGenTag = true
 	root.SilenceUsage = true
 	root.SilenceErrors = true
+	root.InitDefaultHelpFlag()
+	root.InitDefaultVersionFlag()
+	root.Flags().Lookup("help").Usage = "help for Mew"
+	root.Flags().Lookup("version").Usage = "version for Mew"
 	g := attachGlobals(root)
 	g.invokedBinary = invoked
 	g.bindRecursive(root)
@@ -38,6 +43,7 @@ func NewMRoot(info BuildInfo) *cobra.Command {
 	versionLabel := use
 	root.AddCommand(newVersionCmd(versionLabel, info))
 	root.AddCommand(newFeaturesCmd())
+	root.AddCommand(newTransformCmd())
 	root.AddCommand(newDevelopmentCmd())
 	root.AddCommand(newConfigCmd(g))
 	root.AddCommand(newProjectCmd())
@@ -80,10 +86,14 @@ func NewMRoot(info BuildInfo) *cobra.Command {
 	root.AddCommand(newPolicyCmd())
 	root.AddCommand(newCompletionCmd(root))
 	root.AddCommand(newDispatchCmd(root))
+	root.AddCommand(newXCmd(info))
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newExecCmd())
 	root.AddCommand(newEnvCmd())
 	root.AddCommand(newNodeArgsCmd())
+	root.AddCommand(newResolveModuleCmd())
+	root.AddCommand(newWatchCmd())
+	root.AddCommand(newRuntimeCmd())
 	registerStubs(root)
 	root.ValidArgsFunction = rootScriptCompletion
 	configureGroupedHelp(root)
@@ -100,14 +110,19 @@ func NewMXRoot(info BuildInfo) *cobra.Command {
 	}
 	root := &cobra.Command{
 		Use:   use,
-		Short: "MewJS — package executable runner",
-		Long:  "MewJS package executable runner. Executes local or temporary package binaries.",
+		Short: "Mew — package executable runner",
+		Long:  "Mew package executable runner. Executes local or temporary package binaries.",
 	}
 	root.Version = info.Version
+	root.Long += " " + versionSuffix(info)
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.DisableAutoGenTag = true
 	root.SilenceUsage = true
 	root.SilenceErrors = true
+	root.InitDefaultHelpFlag()
+	root.InitDefaultVersionFlag()
+	root.Flags().Lookup("help").Usage = "help for Mew"
+	root.Flags().Lookup("version").Usage = "version for Mew"
 	g := attachGlobals(root)
 	g.invokedBinary = invoked
 	attachAppPreRun(root, g, info)

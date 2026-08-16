@@ -47,10 +47,17 @@ func BuildEnv(opts EnvOptions) ScriptEnv {
 		pathKey:                prependPath(binDir, opts.HostEnv, pathKey),
 	}
 
+	// Build a normalized set of overridden keys so Windows case-insensitive
+	// comparison catches casing variants (e.g. init_cwd vs INIT_CWD).
+	replacedKeys := make(map[string]bool, len(set))
+	for k := range set {
+		replacedKeys[strings.ToUpper(k)] = true
+	}
+
 	out := make([]string, 0, len(opts.HostEnv)+len(set))
 	for _, kv := range opts.HostEnv {
 		key := envKey(kv)
-		if _, ok := set[key]; ok || strings.EqualFold(key, pathKey) {
+		if replacedKeys[strings.ToUpper(key)] {
 			continue
 		}
 		out = append(out, kv)

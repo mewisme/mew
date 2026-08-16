@@ -352,8 +352,8 @@ Delivery order ([`plans/INDEX.md`](plans/INDEX.md)):
 
 1. Foundation and package-manager core (**0001–0031**) — complete
 2. Script and executable runners (**0040–0046**) — implemented and conformance-certified; checklist bookkeeping may lag
-3. **Next:** Runtime augmentation — stock Node launch, TypeScript, loaders, watch (**0050–0057**)
-4. Node and PM management (**0060–0062**)
+3. Runtime augmentation — stock Node launch, TypeScript, loaders, watch (**0050–0057**) — implementation complete, certification pending
+4. **Next:** Node and PM management (**0060–0062**)
 5. Product tooling and public distribution (**0070–0074**)
 6. Cross-cutting conformance, security, and governance programs (**0080+**)
 

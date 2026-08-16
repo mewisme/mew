@@ -4,6 +4,7 @@
 package transform
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -60,7 +61,7 @@ const (
 
 // ValidLoaderKinds lists the loader strings accepted on the wire.
 var ValidLoaderKinds = map[string]bool{
-	"ts": true, "mts": true, "cts": true,
+	"ts": true, "tsx": true, "mts": true, "cts": true,
 }
 
 // ValidFormats lists the format strings accepted on the wire.
@@ -109,8 +110,8 @@ type TransformRequestV2 struct {
 	Options      string `json:"options"` // JSON-encoded NormalizedOptions
 	OptsDigest   string `json:"opts_digest"`
 	NodeMajor    int    `json:"node_major"`
-	SourceMap    string `json:"source_map"`             // "none", "inline", "external"
-	CancelToken  string `json:"cancel_token,omitempty"` // ID used by OpCancel to cancel this request
+	SourceMap    string `json:"source_map"`   // "none", "inline", "external"
+	CancelToken  string `json:"cancel_token"` // ID used by OpCancel to cancel this request
 }
 
 // Validate checks required fields, limits, enum values, and digest integrity.
@@ -148,11 +149,9 @@ func (r *TransformRequestV2) Validate() error {
 		return apperr.New(apperr.TransformFrameSize, "transform.protocol", r.ID,
 			fmt.Sprintf("options too long: %d", len(r.Options)))
 	}
-	if r.Options != "" {
-		if !hexDigestRE.MatchString(r.OptsDigest) {
-			return apperr.New(apperr.Integrity, "transform.protocol", r.ID,
-				"opts_digest missing or malformed")
-		}
+	if !hexDigestRE.MatchString(r.OptsDigest) {
+		return apperr.New(apperr.Integrity, "transform.protocol", r.ID,
+			"opts_digest missing or malformed")
 	}
 	if !SupportedNodeMajors[r.NodeMajor] {
 		return apperr.New(apperr.Usage, "transform.protocol", r.ID,
@@ -166,11 +165,14 @@ func (r *TransformRequestV2) Validate() error {
 		return apperr.New(apperr.Usage, "transform.protocol", r.ID,
 			fmt.Sprintf("unknown format %q", r.Format))
 	}
-	if r.SourceMap != "" && !ValidSourceMapModes[r.SourceMap] {
+	if !ValidSourceMapModes[r.SourceMap] {
 		return apperr.New(apperr.Usage, "transform.protocol", r.ID,
-			fmt.Sprintf("unknown source-map mode %q", r.SourceMap))
+			fmt.Sprintf("unknown or missing source-map mode %q", r.SourceMap))
 	}
-	if r.CancelToken != "" && len(r.CancelToken) > MaxCancelTokenLength {
+	if r.CancelToken == "" {
+		return apperr.New(apperr.Usage, "transform.protocol", r.ID, "missing cancel token")
+	}
+	if len(r.CancelToken) > MaxCancelTokenLength {
 		return apperr.New(apperr.Usage, "transform.protocol", r.ID, "cancel token too long")
 	}
 	return nil
@@ -222,6 +224,58 @@ func (r *CancelRequest) Validate() error {
 	return nil
 }
 
+// HealthRequest is a no-op health check.
+type HealthRequest struct {
+	V  int    `json:"v"`
+	ID string `json:"id"`
+	Op string `json:"op"`
+}
+
+// Validate checks required fields for a health request.
+func (r *HealthRequest) Validate() error {
+	if r.V != ProtocolVersion {
+		return apperr.New(apperr.TransformProtocolVersion, "transform.protocol", r.ID,
+			fmt.Sprintf("unsupported protocol version %d", r.V))
+	}
+	if r.ID == "" {
+		return apperr.New(apperr.Usage, "transform.protocol", "", "missing request id")
+	}
+	if len(r.ID) > MaxIDLength {
+		return apperr.New(apperr.Usage, "transform.protocol", r.ID, "request id too long")
+	}
+	if r.Op != OpHealth {
+		return apperr.New(apperr.Unsupported, "transform.protocol", r.ID,
+			fmt.Sprintf("unknown op %q", r.Op))
+	}
+	return nil
+}
+
+// ShutdownRequest requests a graceful connection close.
+type ShutdownRequest struct {
+	V  int    `json:"v"`
+	ID string `json:"id"`
+	Op string `json:"op"`
+}
+
+// Validate checks required fields for a shutdown request.
+func (r *ShutdownRequest) Validate() error {
+	if r.V != ProtocolVersion {
+		return apperr.New(apperr.TransformProtocolVersion, "transform.protocol", r.ID,
+			fmt.Sprintf("unsupported protocol version %d", r.V))
+	}
+	if r.ID == "" {
+		return apperr.New(apperr.Usage, "transform.protocol", "", "missing request id")
+	}
+	if len(r.ID) > MaxIDLength {
+		return apperr.New(apperr.Usage, "transform.protocol", r.ID, "request id too long")
+	}
+	if r.Op != OpShutdown {
+		return apperr.New(apperr.Unsupported, "transform.protocol", r.ID,
+			fmt.Sprintf("unknown op %q", r.Op))
+	}
+	return nil
+}
+
 // EncodeFrame writes a u32le length-prefixed JSON payload.
 // Rejects frames larger than MaxFrameSize before writing.
 func EncodeFrame(w io.Writer, v any) error {
@@ -257,6 +311,52 @@ func DecodeFrame(r io.Reader, dest any) error {
 		return err
 	}
 	return json.Unmarshal(body, dest)
+}
+
+// ReadFrameBody reads a u32le length-prefixed frame and returns the raw body bytes.
+// Rejects frames larger than MaxFrameSize before allocating.
+func ReadFrameBody(r io.Reader) ([]byte, error) {
+	var hdr [4]byte
+	if _, err := io.ReadFull(r, hdr[:]); err != nil {
+		return nil, err
+	}
+	n := binary.LittleEndian.Uint32(hdr[:])
+	if n > MaxFrameSize {
+		return nil, fmt.Errorf("transform frame too large: %d (max %d)", n, MaxFrameSize)
+	}
+	body := make([]byte, n)
+	if _, err := io.ReadFull(r, body); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+// StrictUnmarshal unmarshals JSON with unknown-field rejection and trailing-data
+// detection. Use for all inbound request frames to enforce the exact operation schema.
+func StrictUnmarshal(data []byte, dest any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(dest); err != nil {
+		return err
+	}
+	// Reject trailing data after the first complete JSON value.
+	if dec.More() {
+		return fmt.Errorf("trailing data after JSON value")
+	}
+	return nil
+}
+
+// PeekOp extracts the "op" field from raw frame bytes for dispatch routing.
+// Uses a tolerant unmarshal (unknown fields allowed) since the full strict
+// unmarshal happens later against the operation-specific type.
+func PeekOp(body []byte) (string, error) {
+	var probe struct {
+		Op string `json:"op"`
+	}
+	if err := json.Unmarshal(body, &probe); err != nil {
+		return "", err
+	}
+	return probe.Op, nil
 }
 
 // ValidateRequestHeader checks the fields common to all request types: version, ID, and op.

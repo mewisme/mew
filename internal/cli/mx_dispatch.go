@@ -16,21 +16,30 @@ func tryMXDispatch(ctx context.Context, root *cobra.Command, g *globalFlags, inf
 	if root == nil || (root.Name() != "mx" && root.Name() != "mewx") {
 		return 0, false
 	}
+	code, handled, _ := runMXDispatch(ctx, root, g, info, argv)
+	return code, handled
+}
+
+// runMXDispatch executes mx DLX dispatch. Callers must ensure the command is
+// mx or intends to behave as mx. Returns the exit code, whether the argv was
+// handled as an mx invocation, and the classified error (already reported).
+func runMXDispatch(ctx context.Context, root *cobra.Command, g *globalFlags, info BuildInfo, argv []string) (int, bool, error) {
 	if len(argv) == 0 {
-		return 0, false
+		return 0, false, nil
 	}
 	selector := mxSelectorAfterFlags(argv)
-	if selector != "" && (isRootMetaInvocation([]string{selector}) || IsMXReserved(root, selector)) {
-		return 0, false
+	if selector != "" && (isRootMetaInvocation([]string{selector}) || isMXBuiltin(root, selector)) {
+		return 0, false, nil
 	}
 	if selector == "" && !mxArgvLooksLikeDLX(argv) {
-		return 0, false
+		return 0, false, nil
 	}
 	inv, err := ParseMXInvocation(argv)
 	if err != nil {
+		cerr := classifyCLIError(err)
 		rep := g.newReporter(root)
-		rep.Error(classifyCLIError(err))
-		return apperr.ExitCode(err), true
+		rep.Error(cerr)
+		return apperr.ExitCode(cerr), true, cerr
 	}
 	if inv.Offline {
 		g.offline = true
@@ -38,15 +47,17 @@ func tryMXDispatch(ctx context.Context, root *cobra.Command, g *globalFlags, inf
 	// mx parses --cwd out of child argv that bootstrap could not classify, so
 	// the invocation snapshot is reloaded for that directory.
 	if err := reloadSnapshotForCWD(ctx, g, inv.CWD); err != nil {
+		cerr := classifyCLIError(err)
 		rep := g.newReporter(root)
-		rep.Error(classifyCLIError(err))
-		return apperr.ExitCode(err), true
+		rep.Error(cerr)
+		return apperr.ExitCode(cerr), true, cerr
 	}
 	ac, err := buildAppContext(ctx, root, g, info)
 	if err != nil {
+		cerr := classifyCLIError(err)
 		rep := g.newReporter(root)
-		rep.Error(classifyCLIError(err))
-		return apperr.ExitCode(err), true
+		rep.Error(cerr)
+		return apperr.ExitCode(cerr), true, cerr
 	}
 	if g.ctrl != nil {
 		cmdLabel := inv.Command
@@ -69,12 +80,13 @@ func tryMXDispatch(ctx context.Context, root *cobra.Command, g *globalFlags, inf
 		Stderr:        os.Stderr,
 		Stdout:        os.Stdout,
 	})
-	rep := g.newReporter(root)
 	if err == nil {
-		return 0, true
+		return 0, true, nil
 	}
-	rep.Error(classifyCLIError(err))
-	return apperr.ExitCode(err), true
+	cerr := classifyCLIError(err)
+	rep := g.newReporter(root)
+	rep.Error(cerr)
+	return apperr.ExitCode(cerr), true, cerr
 }
 
 // mxSelectorAfterFlags returns the first positional token after leading mx and CLI global flags.

@@ -105,6 +105,7 @@ func writeTopicHelp(cmd *cobra.Command, body []byte, pagerFlag string) error {
 		Hyperlinks: caps.Hyperlinks && !plain && !settings.Accessible,
 		ThemeMode:  settings.ThemeMode,
 		UseColor:   settings.UseColor,
+		Symbols:    settings.Symbols,
 	})
 	if err != nil {
 		return err

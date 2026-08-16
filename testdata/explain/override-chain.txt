@@ -1,4 +1,4 @@
 package pkg-b
-pkg-b@1.0.0 → 1.0.0 (tag-or-exact) — exact version or dist-tag match override="^1.0.0"
+pkg-b@1.0.0 -> 1.0.0 (tag-or-exact) -- exact version or dist-tag match override="^1.0.0"
 imported by:
-  . → pkg-a@1.0.0 → pkg-b@1.0.0
+  . -> pkg-a@1.0.0 -> pkg-b@1.0.0

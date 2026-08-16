@@ -226,32 +226,32 @@
     {
       "path": "0052-jsx-decorators-sourcemaps.md",
       "bytes": 10746,
-      "sha256": "c341a4112c49562294ae02dec885b8e45b9ec5f71a93b0a80cbfdef8af8870ff"
+      "sha256": "6fafda43cf138ab090917c1249045356bbd75df44d08639a3eb442100c04bc87"
     },
     {
       "path": "0053-module-resolution-loaders.md",
       "bytes": 10709,
-      "sha256": "fe65e371c2150c187219305051e90d90b473d7cc3c45a53d131b1c07473cf93d"
+      "sha256": "3366acc6df52d1d929d34219e2f47cea3e0e8d6a3ca91b10f6cb83a658cc4de5"
     },
     {
       "path": "0054-env-modern-apis.md",
       "bytes": 10814,
-      "sha256": "8045acb7fb57d9d0c87c27daa3eee465c04bd921b35117f7c0d1ac5f17f510b9"
+      "sha256": "e993343a9b1ae665ec1f49a2cbd5e162947822fce83f695c7f274fcac4c50bc4"
     },
     {
       "path": "0055-watch-mode.md",
       "bytes": 10657,
-      "sha256": "596e1327156e4f1782987248f58cfe84dda34b2f4ee69d28b7235b861c06549f"
+      "sha256": "94759060287d3f47dd9fdf5453acfb37faaf88d768624e438e0e633f508c5f79"
     },
     {
       "path": "0056-debugging-inspection.md",
       "bytes": 10818,
-      "sha256": "8a8b97e229f0cc9c25c0206b84302be1dada77040906d102105dedfe491c6c03"
+      "sha256": "11709838e0af30dbdd540312572c6fa31d4e8f20efbb291a94eb7ad5e05bc935"
     },
     {
       "path": "0057-runtime-stabilization.md",
-      "bytes": 10981,
-      "sha256": "b2755af935d872e4586b2bb8e48754fc2fe4972d96a19f8816edb75dc643814e"
+      "bytes": 11034,
+      "sha256": "968f0395398b7bdac2fbbabf21dd5965ae85d4a98aeb98d85d6bbc9c5f6930f1"
     },
     {
       "path": "0060-node-manager.md",
@@ -355,8 +355,8 @@
     },
     {
       "path": "CHECKLIST.md",
-      "bytes": 128831,
-      "sha256": "e9adb72621f2e5c5e81c2bbf2e5bda7410d59640153abd3b9ecb563f6f475a1e"
+      "bytes": 127007,
+      "sha256": "da248f149165ce4bd9830e52b158800e220f9a12a815c54b5f5ed5b585a01730"
     },
     {
       "path": "INDEX.md",
@@ -365,8 +365,8 @@
     },
     {
       "path": "scripts/enrich_and_generate.py",
-      "bytes": 18430,
-      "sha256": "5d49a0928f223ab1151fd39e931e8f44ce377fbb60e28b976f75713eb312eae2"
+      "bytes": 18582,
+      "sha256": "8b8fe96fb3567e74d3861513932ab757b9f6d2fcb2d5d970f12def81ed97d590"
     },
     {
       "path": "scripts/enrichment-core.json",
@@ -400,8 +400,8 @@
     },
     {
       "path": "status.json",
-      "bytes": 981,
-      "sha256": "4b64a25fbc01f0f2a08775081bda04ee07e86e7d7d17ce6fecc9e0d1397ec7ba"
+      "bytes": 1165,
+      "sha256": "ed7eda246b6cd0388db8b342a06bca94ba154789ebcd10203cb49719efb1a131"
     },
     {
       "path": "ux/accessibility-evidence.md",

@@ -277,32 +277,6 @@ func (b *baseReporter) redact(s string) string {
 	return Redact(s)
 }
 
-func (b *baseReporter) colorEnabled(w io.Writer) bool {
-	switch b.opts.Color {
-	case ColorAlways:
-		return true
-	case ColorNever:
-		return false
-	default:
-		if os.Getenv("NO_COLOR") != "" {
-			return false
-		}
-		return isTTY(w)
-	}
-}
-
-func isTTY(w io.Writer) bool {
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
-}
-
 type humanReporter struct{ base *baseReporter }
 
 func (r *humanReporter) Progress(ev Event) {
@@ -392,11 +366,8 @@ func (r *humanReporter) Error(err error) {
 		fmt.Fprintln(r.base.opts.Err, msg)
 		return
 	}
+	// Plain text fallback; presentation layer supplies HumanErrorRender for styled output.
 	msg := r.base.redact(formatHumanError(err))
-	if r.base.colorEnabled(r.base.opts.Err) {
-		fmt.Fprintf(r.base.opts.Err, "\x1b[31m%s\x1b[0m\n", msg)
-		return
-	}
 	fmt.Fprintln(r.base.opts.Err, msg)
 }
 

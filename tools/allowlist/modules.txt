@@ -58,3 +58,4 @@ golang.org/x/text
 golang.org/x/tools
 github.com/evanw/esbuild
 github.com/kylelemons/godebug
+github.com/fsnotify/fsnotify

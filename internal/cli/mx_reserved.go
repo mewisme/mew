@@ -29,3 +29,18 @@ func IsMXReserved(root *cobra.Command, selector string) bool {
 	}
 	return false
 }
+
+// isMXBuiltin reports whether selector is an mx built-in command (version,
+// completion, cache) or a registered subcommand of the mx root. Unlike
+// IsMXReserved, it only considers the true mx root — not the m root — so it
+// is safe to use from m x dispatch.
+func isMXBuiltin(root *cobra.Command, selector string) bool {
+	if root == nil {
+		return IsMXReserved(nil, selector)
+	}
+	// If we are inside m (not mx), only check the fixed built-in list.
+	if root.Name() != "mx" && root.Name() != "mewx" {
+		return IsMXReserved(nil, selector)
+	}
+	return IsMXReserved(root, selector)
+}

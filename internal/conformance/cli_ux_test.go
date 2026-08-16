@@ -47,12 +47,12 @@ func TestRunCLIUXDryRun(t *testing.T) {
 		switch s.Status {
 		case StatusPlanned:
 			// dry-run inventory
-		case StatusSkipped:
+		case StatusNotApplicable:
 			if s.SkipReason != "unsupported platform" {
-				t.Fatalf("suite %s status=skipped reason=%q want unsupported platform", s.ID, s.SkipReason)
+				t.Fatalf("suite %s status=not-applicable reason=%q want unsupported platform", s.ID, s.SkipReason)
 			}
 		default:
-			t.Fatalf("suite %s status=%s want planned (or platform-skipped)", s.ID, s.Status)
+			t.Fatalf("suite %s status=%s want planned (or platform-not-applicable)", s.ID, s.Status)
 		}
 	}
 }

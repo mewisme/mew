@@ -1,0 +1,17 @@
+// Verify sealed objects work as workerData without mutation errors.
+import { Worker, isMainThread } from 'node:worker_threads';
+import { writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+if (isMainThread) {
+  const userData = Object.seal({ name: 'sealed', count: 2 });
+
+  const worker = new Worker(join(__dirname, 'worker-data-task.mjs'), {
+    workerData: userData,
+  });
+  worker.on('message', (msg) => writeFileSync('output.txt', msg));
+  worker.on('error', (err) => writeFileSync('output.txt', 'error:' + err.message));
+}

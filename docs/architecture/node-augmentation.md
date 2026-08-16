@@ -18,7 +18,7 @@ directly:
 
 - Loader hooks (`--import`, custom loaders)
 - Preload modules (`--require` / `--import` preload)
-- Worker entrypoints spawned by the Go control plane
+- Worker-thread bootstrap and loader registration
 - Small PnP / resolution helpers consumed by loaders
 
 Do not grow a general-purpose JS application layer inside the repository.

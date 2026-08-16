@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 
@@ -320,14 +319,13 @@ func pathsToImporters(target string, parents map[string][]string, importers map[
 	return out
 }
 
-// FormatPackageExplanation renders human output scoped to one package.
-func FormatPackageExplanation(ex *PackageExplanation, w io.Writer, color bool) error {
+// FormatPackageExplanation renders human-readable output for one package.
+// Output is plain text (no ANSI); the CLI layer may optionally add color.
+func FormatPackageExplanation(ex *PackageExplanation, w io.Writer) error {
 	if ex == nil {
 		return nil
 	}
-	bold := ansiWrap(color, "\x1b[1m", "\x1b[0m")
-	dim := ansiWrap(color, "\x1b[2m", "\x1b[0m")
-	if _, err := fmt.Fprintf(w, "package %s\n", bold(ex.Package)); err != nil {
+	if _, err := fmt.Fprintf(w, "package %s\n", ex.Package); err != nil {
 		return err
 	}
 	if ex.Conflict != nil {
@@ -335,11 +333,11 @@ func FormatPackageExplanation(ex *PackageExplanation, w io.Writer, color bool) e
 		return err
 	}
 	for _, d := range ex.Decisions {
-		line := fmt.Sprintf("%s@%s → %s (%s)", d.Package, d.Requested, d.Selected, d.Reason)
+		line := fmt.Sprintf("%s@%s -> %s (%s)", d.Package, d.Requested, d.Selected, d.Reason)
 		if detail := ReasonDetailFor(d.Reason); detail.Text != "" {
-			line += " — " + detail.Text
+			line += " -- " + detail.Text
 			if detail.Code != "" {
-				line += dim(" [" + detail.Code + "]")
+				line += " [" + detail.Code + "]"
 			}
 		}
 		if len(d.PeerProviders) > 0 {
@@ -360,34 +358,12 @@ func FormatPackageExplanation(ex *PackageExplanation, w io.Writer, color bool) e
 			return err
 		}
 		for _, p := range ex.Paths {
-			if _, err := fmt.Fprintf(w, "  %s\n", strings.Join(p.Chain, " → ")); err != nil {
+			if _, err := fmt.Fprintf(w, "  %s\n", strings.Join(p.Chain, " -> ")); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
-}
-
-func ansiWrap(enabled bool, prefix, suffix string) func(string) string {
-	if !enabled {
-		return func(s string) string { return s }
-	}
-	return func(s string) string { return prefix + s + suffix }
-}
-
-func ColorEnabledForWriter(w io.Writer) bool {
-	if os.Getenv("NO_COLOR") != "" {
-		return false
-	}
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
 // ExplainPeer dry-resolves and returns a conflict tree when peerName is unsatisfied.
@@ -415,13 +391,24 @@ func (e *Engine) ExplainPeer(ctx context.Context, root, peerName string, opts Re
 
 // FormatConflictTree renders a human-readable conflict tree.
 func FormatConflictTree(tree ConflictTree) string {
+	return FormatConflictTreeWithSymbols(tree, " -> ", " -- ")
+}
+
+// FormatConflictTreeWithSymbols is like FormatConflictTree but uses the
+// caller-provided arrow and separator glyphs so presentation can supply
+// canonical symbols without the resolver importing presentation.
+func FormatConflictTreeWithSymbols(tree ConflictTree, arrow, separator string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "peer %s\n", tree.Peer)
-	formatConflictNode(&b, tree.Root, 0)
+	formatConflictNodeWithSymbols(&b, tree.Root, 0, arrow, separator)
 	return b.String()
 }
 
 func formatConflictNode(b *strings.Builder, n ConflictNode, depth int) {
+	formatConflictNodeWithSymbols(b, n, depth, " -> ", " -- ")
+}
+
+func formatConflictNodeWithSymbols(b *strings.Builder, n ConflictNode, depth int, arrow, separator string) {
 	prefix := strings.Repeat("  ", depth)
 	line := prefix + n.Constraint
 	if n.RequiringPackage != "" {
@@ -432,7 +419,7 @@ func formatConflictNode(b *strings.Builder, n ConflictNode, depth int) {
 	}
 	fmt.Fprintln(b, line)
 	if len(n.SearchPath) > 0 {
-		fmt.Fprintf(b, "%ssearch: %s\n", prefix, strings.Join(n.SearchPath, " → "))
+		fmt.Fprintf(b, "%ssearch: %s\n", prefix, strings.Join(n.SearchPath, " "+arrow+" "))
 	}
 	if len(n.Candidates) > 0 {
 		fmt.Fprintf(b, "%scandidates: %s\n", prefix, strings.Join(n.Candidates, ", "))
@@ -450,6 +437,6 @@ func formatConflictNode(b *strings.Builder, n ConflictNode, depth int) {
 		fmt.Fprintf(b, "%sremediation: %s\n", prefix, n.Remediation)
 	}
 	for _, child := range n.Children {
-		formatConflictNode(b, child, depth+1)
+		formatConflictNodeWithSymbols(b, child, depth+1, arrow, separator)
 	}
 }

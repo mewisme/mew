@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mewisme/mew/internal/process"
 )
@@ -233,5 +234,154 @@ func TestExecSupervisorExitCodePropagation(t *testing.T) {
 	var exitErr *process.ExitError
 	if !errors.As(err, &exitErr) || exitErr.Code != 7 {
 		t.Fatalf("want *process.ExitError code 7, got %T %v", err, err)
+	}
+}
+
+func TestExecSupervisorCancelForceKills(t *testing.T) {
+	sup := process.NewExecSupervisor()
+	sup.GracePeriod = 50 * time.Millisecond
+	sup.ForceKillTimeout = 2 * time.Second
+
+	dir := t.TempDir()
+	env := process.RestrictedEnv(process.EnvSource{Vars: os.Environ(), Explicit: true}, dir)
+	spec := process.Spec{
+		Dir:    dir,
+		Env:    env,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	if runtime.GOOS == "windows" {
+		// Windows: cmd /c "timeout /t 60 /nobreak" — sleeps, ignores Ctrl+C.
+		spec.Path = "cmd"
+		spec.Args = []string{"/c", "timeout /t 60 /nobreak"}
+	} else {
+		// Unix: trap '' TERM INT; sleep 60 — ignores SIGTERM/SIGINT.
+		spec.Path = "sh"
+		spec.Args = []string{"-c", "trap '' TERM INT; sleep 60"}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	h, err := sup.Start(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Cancel context — should trigger graceful signal, then force-kill.
+	cancel()
+
+	err = sup.Wait(ctx, h)
+	if err == nil {
+		t.Fatal("expected error from context cancellation")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled after force-kill, got %v", err)
+	}
+}
+
+func TestExecSupervisorForceKillReapTimeout(t *testing.T) {
+	// Start a real process, force-kill it, then verify that Wait returns
+	// promptly (not hanging on the reap).
+	sup := process.NewExecSupervisor()
+	sup.GracePeriod = 10 * time.Millisecond
+	sup.ForceKillTimeout = 5 * time.Second
+
+	dir := t.TempDir()
+	env := process.RestrictedEnv(process.EnvSource{Vars: os.Environ(), Explicit: true}, dir)
+	spec := process.Spec{
+		Dir:    dir,
+		Env:    env,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	if runtime.GOOS == "windows" {
+		spec.Path = "cmd"
+		spec.Args = []string{"/c", "timeout /t 60 /nobreak"}
+	} else {
+		spec.Path = "sh"
+		spec.Args = []string{"-c", "trap '' TERM INT; sleep 60"}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	h, err := sup.Start(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	cancel()
+	err = sup.Wait(ctx, h)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error from context cancellation")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	// Should complete well within ForceKillTimeout (5s).
+	if elapsed > 4*time.Second {
+		t.Fatalf("Wait took %v after force-kill, expected prompt reap", elapsed)
+	}
+}
+
+func TestExecSupervisorErrForceKillFailed(t *testing.T) {
+	// Verify ErrForceKillFailed is a distinct sentinel.
+	if process.ErrForceKillFailed == nil {
+		t.Fatal("ErrForceKillFailed is nil")
+	}
+	if process.ErrForceKillFailed.Error() == "" {
+		t.Fatal("ErrForceKillFailed has no message")
+	}
+}
+
+func TestExecSupervisorProcessTreeKillUnix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix process-group test")
+	}
+
+	sup := process.NewExecSupervisor()
+	sup.GracePeriod = 100 * time.Millisecond
+	sup.ForceKillTimeout = 5 * time.Second
+
+	dir := t.TempDir()
+	env := process.RestrictedEnv(process.EnvSource{Vars: os.Environ(), Explicit: true}, dir)
+	// Spawn a child that spawns a grandchild in the same process group.
+	// Both must be killed.
+	spec := process.Spec{
+		Dir:    dir,
+		Env:    env,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+		Path:   "sh",
+		Args: []string{"-c", `
+			trap '' TERM INT
+			sleep 60 &
+			wait
+		`},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	h, err := sup.Start(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	cancel()
+	err = sup.Wait(ctx, h)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected error from context cancellation")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	// Both parent and grandchild should be killed promptly.
+	if elapsed > 4*time.Second {
+		t.Fatalf("process tree kill took %v, expected prompt", elapsed)
 	}
 }

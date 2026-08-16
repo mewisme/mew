@@ -1,19 +1,20 @@
 name: ci
 
-# Default gate. Runs on every pull request and push to main, and must stay
-# cheap enough to be a blocking check: formatting, static analysis, the unit
-# suite on Linux, a build, and one limited Windows smoke job for the
-# platform-specific behavior Linux cannot prove (paths, config, identity).
+# Default merge-blocking gate. Runs on every push and pull request.
+# Includes formatting, static analysis, the unit suite on Linux, a build,
+# one limited Windows smoke job for platform-specific behavior Linux cannot
+# prove (paths, config, identity), and runtime certification (3 OS × 4 Node
+# versions, exact-head SHA binding, fail-closed aggregate verdict).
 #
-# Everything heavy — the full three-OS matrix, race detector, cross
+# Everything else heavy — the full three-OS matrix, race detector, cross
 # compilation, lock conformance against real package managers, crash
-# integration, soak, benchmarks, certification, and govulncheck — lives in
-# `full.yml` and runs on a schedule, on demand, or for a release. Those suites
-# are not deleted, only removed from the blocking path.
+# integration, soak, benchmarks, core/runner/platform certification, and
+# govulncheck — lives in `full.yml` and runs on a schedule, on demand, or
+# for a release. Those suites are not deleted, only moved off the blocking
+# path.
 
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -30,8 +31,8 @@ env:
   NODE_VERSION: "22"
 
 jobs:
-  quality:
-    name: quality
+  lint:
+    name: lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -93,7 +94,7 @@ jobs:
         run: go run ./tools/ci/verify-crash-shards
 
   test:
-    name: test (linux)
+    name: test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -126,8 +127,8 @@ jobs:
       - name: Doctor
         run: go run ./cmd/m --cwd fixtures/projects/mlock-greenfield doctor --json
 
-  windows-smoke:
-    name: windows smoke
+  smoke:
+    name: smoke
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -157,23 +158,29 @@ jobs:
       - name: Doctor
         run: go run ./cmd/m --cwd fixtures/projects/mlock-greenfield doctor --json
 
+  runtime-cert:
+    name: runtime certification
+    uses: ./.github/workflows/runtime-cert.yml
+
   gate:
-    name: CI gate
+    name: gate
     runs-on: ubuntu-latest
     if: always()
     needs:
-      - quality
+      - lint
       - test
-      - windows-smoke
+      - smoke
+      - runtime-cert
     steps:
       - name: Verify required jobs
         shell: bash
         run: |
           set -euo pipefail
           for result in \
-            "${{ needs.quality.result }}" \
+            "${{ needs.lint.result }}" \
             "${{ needs.test.result }}" \
-            "${{ needs.windows-smoke.result }}"
+            "${{ needs.smoke.result }}" \
+            "${{ needs.runtime-cert.result }}"
           do
             [[ "$result" == success ]] || exit 1
           done

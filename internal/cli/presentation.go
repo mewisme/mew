@@ -12,13 +12,39 @@ import (
 )
 
 func (g *globalFlags) bindPresentation(cmd *cobra.Command) {
-	cmd.PersistentFlags().StringVar(&g.output, "output", "", "output mode: rich|plain|json|ndjson|silent")
-	cmd.PersistentFlags().StringVar(&g.logLevel, "log-level", "", "log level: error|warn|info|debug")
+	cmd.PersistentFlags().StringVar(&g.output, "output", "", "output mode: rich | plain | json | ndjson | silent")
+	cmd.PersistentFlags().StringVar(&g.logLevel, "log-level", "", "log level: error | warn | info | debug")
 	cmd.PersistentFlags().BoolVar(&g.noColor, "no-color", false, "disable ANSI color")
 	cmd.PersistentFlags().BoolVar(&g.noProgress, "no-progress", false, "disable progress output")
 	cmd.PersistentFlags().BoolVar(&g.ascii, "ascii", false, "use ASCII instead of Unicode symbols")
 	cmd.PersistentFlags().BoolVar(&g.noSummary, "no-summary", false, "suppress command summary output")
 	cmd.PersistentFlags().BoolVar(&g.accessible, "accessible", false, "accessible append-only output")
+}
+
+// helpSettings returns presentation settings for help/usage template rendering.
+// It avoids the full controller setup (no TTY detection) but uses the canonical
+// theme resolution path so --theme dark/light/auto is respected consistently.
+func (g *globalFlags) helpSettings() presentation.EffectiveSettings {
+	useColor := !g.noColor
+	useUnicode := !g.ascii
+	var themeMode presentation.ThemeMode
+	if !useColor {
+		themeMode = presentation.ThemeNone
+	} else if g.accessible {
+		themeMode = presentation.ThemeAccessible
+	} else {
+		// Use canonical theme resolution from the configured theme flag.
+		// Dark-mode detection is unavailable at help time; falls back to light.
+		themeMode = presentation.ResolveTheme(g.theme, nil)
+	}
+	return presentation.EffectiveSettings{
+		UseColor:   useColor,
+		UseUnicode: useUnicode,
+		ThemeMode:  themeMode,
+		Width:      80,
+		Symbols:    presentation.SelectSymbols(useUnicode),
+		BinaryName: g.invokedBinary,
+	}
 }
 
 // presentationInput builds resolver input from the parsed flags and the theme

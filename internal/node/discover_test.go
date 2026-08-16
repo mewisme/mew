@@ -100,6 +100,90 @@ func TestDetectCapabilitiesBoundaries(t *testing.T) {
 	}
 }
 
+func TestCompareVersion(t *testing.T) {
+	tests := []struct {
+		a, b string
+		want int
+		ok   bool
+	}{
+		// equal
+		{"18.19.0", "18.19.0", 0, true},
+		{"22.11.0", "22.11.0", 0, true},
+		// a < b (major)
+		{"18.19.0", "20.0.0", -1, true},
+		{"16.0.0", "18.0.0", -1, true},
+		// a < b (minor)
+		{"18.0.0", "18.19.0", -1, true},
+		{"18.18.0", "18.19.0", -1, true},
+		// a < b (patch)
+		{"18.19.0", "18.19.1", -1, true},
+		// a > b
+		{"20.6.0", "18.19.0", 1, true},
+		{"18.20.0", "18.19.0", 1, true},
+		{"18.19.1", "18.19.0", 1, true},
+		// floor boundaries
+		{"18.18.0", "18.19.0", -1, true},
+		{"18.19.0", "18.19.0", 0, true},
+		{"18.20.0", "18.19.0", 1, true},
+		// Node 20 boundaries
+		{"20.5.0", "20.6.0", -1, true},
+		{"20.6.0", "20.6.0", 0, true},
+		{"20.7.0", "20.6.0", 1, true},
+		// invalid
+		{"invalid", "18.19.0", 0, false},
+		{"18.19.0", "invalid", 0, false},
+		{"", "", 0, false},
+	}
+	for _, tt := range tests {
+		got, ok := CompareVersion(tt.a, tt.b)
+		if ok != tt.ok {
+			t.Errorf("CompareVersion(%q, %q) ok=%v, want ok=%v", tt.a, tt.b, ok, tt.ok)
+			continue
+		}
+		if ok && got != tt.want {
+			t.Errorf("CompareVersion(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+		}
+	}
+}
+
+func TestMinRuntimeVersion(t *testing.T) {
+	// Verify the constant parses correctly.
+	major, minor, patch, ok := parseSemver(MinRuntimeVersion)
+	if !ok {
+		t.Fatalf("MinRuntimeVersion %q does not parse", MinRuntimeVersion)
+	}
+	if major != 18 || minor != 19 || patch != 0 {
+		t.Fatalf("MinRuntimeVersion %q = %d.%d.%d, want 18.19.0", MinRuntimeVersion, major, minor, patch)
+	}
+}
+
+func TestCompareVersionMinFloor(t *testing.T) {
+	// Every version below MinRuntimeVersion must compare as less.
+	below := []string{"18.18.0", "18.0.0", "16.20.0", "14.0.0", "12.0.0"}
+	for _, v := range below {
+		cmp, ok := CompareVersion(v, MinRuntimeVersion)
+		if !ok {
+			t.Errorf("CompareVersion(%q, %q) not ok", v, MinRuntimeVersion)
+			continue
+		}
+		if cmp >= 0 {
+			t.Errorf("CompareVersion(%q, %q) = %d, want < 0", v, MinRuntimeVersion, cmp)
+		}
+	}
+	// Every version at or above MinRuntimeVersion must compare as >=.
+	above := []string{"18.19.0", "18.19.1", "18.20.0", "20.0.0", "20.6.0", "22.0.0", "24.0.0"}
+	for _, v := range above {
+		cmp, ok := CompareVersion(v, MinRuntimeVersion)
+		if !ok {
+			t.Errorf("CompareVersion(%q, %q) not ok", v, MinRuntimeVersion)
+			continue
+		}
+		if cmp < 0 {
+			t.Errorf("CompareVersion(%q, %q) = %d, want >= 0", v, MinRuntimeVersion, cmp)
+		}
+	}
+}
+
 func TestDiscoverNodeFound(t *testing.T) {
 	// Only run if node is available on PATH.
 	if _, err := exec.LookPath("node"); err != nil {

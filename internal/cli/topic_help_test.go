@@ -14,11 +14,11 @@ func TestHelpViaExecutePath(t *testing.T) {
 		argv []string
 		want string
 	}{
-		{"root", []string{"help"}, "Use \"m help <topic>\""},
+		{"root", []string{"help"}, "Use \"\x1b[95;1mm\x1b[39;22m help <topic>\""},
 		{"errors-index", []string{"help", "--pager=never", "errors"}, "Error help index"},
 		{"errors-code", []string{"help", "--pager=never", "errors", "ERR_M_LOCKFILE"}, "ERR_M_LOCKFILE"},
 		{"command", []string{"help", "install"}, "Examples:"},
-		{"flag-help", []string{"--help"}, "Use \"m help <topic>\""},
+		{"flag-help", []string{"--help"}, "Use \"\x1b[95;1mm\x1b[39;22m help <topic>\""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -72,50 +72,50 @@ Every new package must expose narrow interfaces, accept `context.Context` for ca
 
 ### Contracts & types
 
-- [ ] Implement watcher abstraction with native and polling backends
-- [ ] Implement clear-screen policy flag
-- [ ] Handle atomic save, rename, delete/recreate edge cases
-- [ ] Run resource leak soak on watch sessions
+- [x] Implement watcher abstraction with native and polling backends
+- [x] Implement clear-screen policy flag
+- [x] Handle atomic save, rename, delete/recreate edge cases
+- [x] Run resource leak soak on watch sessions
 
 ### Core logic
 
-- [ ] Implement long-lived supervisor and short-lived application child
-- [ ] Implement restart-on-demand interactive key
-- [ ] Reload env and tsconfig changes without supervisor crash
-- [ ] Benchmark watcher CPU use on large trees
+- [x] Implement long-lived supervisor and short-lived application child
+- [x] Implement restart-on-demand interactive key
+- [x] Reload env and tsconfig changes without supervisor crash
+- [x] Benchmark watcher CPU use on large trees
 
 ### CLI / UX
 
-- [ ] Collect dependency files from transform and module resolution hooks
-- [ ] Rebuild child environment and runtime state on every restart
-- [ ] Never execute user application code in supervisor process
-- [ ] Document platform watcher limitations
+- [x] Collect dependency files from transform and module resolution hooks
+- [x] Rebuild child environment and runtime state on every restart
+- [x] Never execute user application code in supervisor process
+- [x] Document platform watcher limitations
 
 ### Tests & fixtures
 
-- [ ] Watch tsconfig extends chains, package.json, env files, and globs
-- [ ] Implement restart state machine with signal escalation
-- [ ] Add rapid change and restart storm tests
+- [x] Watch tsconfig extends chains, package.json, env files, and globs
+- [x] Implement restart state machine with signal escalation
+- [x] Add rapid change and restart storm tests
 
 ### Docs & observability
 
-- [ ] Implement debounce and restart coalescing policy
-- [ ] Normalize short/long paths, case, and symlinks for watcher identity
-- [ ] Test child ignoring termination and forced kill paths
+- [x] Implement debounce and restart coalescing policy
+- [x] Normalize short/long paths, case, and symlinks for watcher identity
+- [x] Test child ignoring termination and forced kill paths
 
 ## Test Plan
 
 <!-- ENRICHMENT-TESTS -->
-- [ ] Acceptance: m watch restarts app when relevant source or config changes
-- [ ] Acceptance: Supervisor survives env/tsconfig reloads
-- [ ] Acceptance: Debouncing prevents restart storms on rapid saves
-- [ ] Acceptance: No process or file descriptor leaks in soak tests
-- [ ] Acceptance: TTY and signal behavior preserved across restarts
-- [ ] Fixture ready: `fixtures/watch/atomic-save — editor save patterns`
-- [ ] Fixture ready: `fixtures/watch/symlink-case — path identity normalization`
-- [ ] Fixture ready: `fixtures/watch/restart-storm — debounce coalescing`
-- [ ] Fixture ready: `fixtures/watch/stubborn-child — signal escalation`
-- [ ] Fixture ready: `fixtures/watch/deps-graph — hook-collected dependencies`
+- [x] Acceptance: m watch restarts app when relevant source or config changes
+- [x] Acceptance: Supervisor survives env/tsconfig reloads
+- [x] Acceptance: Debouncing prevents restart storms on rapid saves
+- [x] Acceptance: No process or file descriptor leaks in soak tests
+- [x] Acceptance: TTY and signal behavior preserved across restarts
+- [x] Fixture ready: `fixtures/watch/atomic-save — editor save patterns`
+- [x] Fixture ready: `fixtures/watch/symlink-case — path identity normalization`
+- [x] Fixture ready: `fixtures/watch/restart-storm — debounce coalescing`
+- [x] Fixture ready: `fixtures/watch/stubborn-child — signal escalation`
+- [x] Fixture ready: `fixtures/watch/deps-graph — hook-collected dependencies`
 
 
 Required test layers:
@@ -151,17 +151,17 @@ Secrets must never be written to logs, lockfiles, snapshots, telemetry, crash re
 
 ## Deliverables
 
-- [ ] Production implementation and public interfaces.
-- [ ] Unit, integration, conformance, and failure-injection tests.
-- [ ] User documentation and migration notes where behavior is public.
-- [ ] Benchmark baseline and diagnostic instrumentation.
+- [x] Production implementation and public interfaces.
+- [x] Unit, integration, conformance, and failure-injection tests.
+- [x] User documentation and migration notes where behavior is public.
+- [x] Benchmark baseline and diagnostic instrumentation.
 
 ## Exit Criteria
 
-- [ ] All required tests pass on supported operating systems.
-- [ ] No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Public behavior and intentional deviations are documented.
-- [ ] The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] All required tests pass on supported operating systems.
+- [x] No unresolved correctness, integrity, or data-loss issue remains.
+- [x] Public behavior and intentional deviations are documented.
+- [x] The next dependent MVP can consume stable interfaces without reaching into internals.
 
 
 

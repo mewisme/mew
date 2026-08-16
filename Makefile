@@ -32,11 +32,14 @@ COMMIT      ?= $(shell $(GIT) rev-parse --short HEAD 2>/dev/null || echo unknown
 BUILD_DATE  ?= $(shell $(GIT) log -1 --format=%cd --date=format:%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
 LDFLAGS     := -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildDate=$(BUILD_DATE)
 
+TESTEXEC           := $(GO) run ./tools/testexec
+TESTEXEC_WORKERS    ?= auto
 TEST_TIMEOUT        ?= 25m
 TEST_SHORT_TIMEOUT  ?= 25m
 TEST_INTEGRATION_TIMEOUT ?= 30m
 TEST_RACE_TIMEOUT   ?= 40m
 TEST_E2E_TIMEOUT    ?= 15m
+TEST_CRASH_TIMEOUT  ?= 30m
 
 # Platform. EXE is .exe on Windows; empty elsewhere.
 EXE ?=
@@ -82,18 +85,19 @@ help: ## Show this help
 	@echo "  clean-build       Remove build output directory"
 	@echo ""
 	@echo "Testing:"
-	@echo "  test              Run full unit and integration suite"
+	@echo "  test              Run full unit and integration suite (adaptive parallel)"
 	@echo "  test-short        Run fast suite (skips soak and wall-clock)"
 	@echo "  test-unit         Run unit tests only"
-	@echo "  test-integration  Run integration tests"
+	@echo "  test-integration  Run integration tests (process-level sharding)"
 	@echo "  test-e2e          Run runtime E2E and Node version tests"
+	@echo "  test-crash        Run crash recovery suite (build tag: crash)"
 	@echo "  test-runtime      Run runtime, transform, and node tests"
 	@echo "  test-transform    Run transform tests"
 	@echo "  test-cli          Run CLI tests"
 	@echo "  test-runner       Run runner, process, and lifecycle tests"
 	@echo "  test-workspace    Run workspace and snapshot tests"
 	@echo "  test-race         Run race detector (requires CGO)"
-	@echo "  test-all          Run unit, integration, E2E, and race suites"
+	@echo "  test-all          Run full and race suites"
 	@echo ""
 	@echo "Quality:"
 	@echo "  vet               Run go vet"
@@ -148,6 +152,7 @@ help: ## Show this help
 	@echo "Overridable variables:"
 	@echo "  GO=$(GO)  PYTHON=$(PYTHON)  GIT=$(GIT)"
 	@echo "  GOLANGCI_LINT=$(GOLANGCI_LINT)  GOVULNCHECK=$(GOVULNCHECK)"
+	@echo "  TESTEXEC_WORKERS=$(TESTEXEC_WORKERS)  (auto, 1, or explicit N)"
 	@echo "  VERSION=$(VERSION)  BIN_DIR=$(BIN_DIR)  REPORTS_DIR=$(REPORTS_DIR)  EXE=$(EXE)"
 
 .PHONY: fmt
@@ -227,24 +232,24 @@ clean-build: ## Remove build output directory
 	rm -rf $(BIN_DIR)
 
 .PHONY: test
-test: ## Run full unit and integration suite
-	$(GO) test ./... -count=1 -timeout $(TEST_TIMEOUT)
+test: ## Run full unit and integration suite (adaptive parallel execution)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -timeout $(TEST_TIMEOUT)
 
 .PHONY: test-short
-test-short: ## Run fast suite (skips soak and wall-clock)
-	$(GO) test ./... -short -count=1 -timeout $(TEST_SHORT_TIMEOUT)
+test-short: ## Run fast suite (skips soak and wall-clock; adaptive parallel)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -short -timeout $(TEST_SHORT_TIMEOUT)
 
 .PHONY: test-unit
 test-unit: ## Run unit tests only (no integration, conformance, or E2E)
-	$(GO) test $$(go list ./... | grep -v '/tests/') -count=1 -timeout $(TEST_TIMEOUT)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -timeout $(TEST_TIMEOUT) $$(go list ./... | grep -v '/tests/')
 
 .PHONY: test-integration
-test-integration: ## Run integration tests
-	$(GO) test ./tests/integration/... -count=1 -timeout $(TEST_INTEGRATION_TIMEOUT)
+test-integration: ## Run integration tests (process-level sharding)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -timeout $(TEST_INTEGRATION_TIMEOUT) ./tests/integration/...
 
 .PHONY: test-e2e
 test-e2e: ## Run runtime E2E and Node version tests
-	$(GO) test ./tests/integration/... -count=1 -run 'RuntimeE2E|NodeVersion' -v -timeout $(TEST_E2E_TIMEOUT)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -run 'RuntimeE2E|NodeVersion' -v -timeout $(TEST_E2E_TIMEOUT) ./tests/integration/...
 
 .PHONY: test-runtime
 test-runtime: ## Run runtime, transform, and node tests
@@ -266,12 +271,16 @@ test-runner: ## Run runner/process/lifecycle tests
 test-workspace: ## Run workspace and snapshot tests
 	$(GO) test ./internal/workspace/... ./internal/snapshot/... -count=1 -timeout $(TEST_TIMEOUT)
 
+.PHONY: test-crash
+test-crash: ## Run crash recovery suite (build tag: crash)
+	$(TESTEXEC) -workers $(TESTEXEC_WORKERS) -tags crash -timeout $(TEST_CRASH_TIMEOUT) ./tests/integration/...
+
 .PHONY: test-race
 test-race: ## Run race detector (requires CGO)
-	CGO_ENABLED=1 $(GO) test -race ./... -count=1 -timeout $(TEST_RACE_TIMEOUT)
+	CGO_ENABLED=1 $(TESTEXEC) -workers $(TESTEXEC_WORKERS) -race -timeout $(TEST_RACE_TIMEOUT)
 
 .PHONY: test-all
-test-all: test test-race test-e2e ## Run unit, integration, E2E, and race suites
+test-all: test test-race ## Run full and race suites
 
 .PHONY: vet
 vet: ## Run go vet
@@ -315,22 +324,23 @@ pre-push: quality test-short build ## Broader pre-push validation
 
 .PHONY: cert-runtime
 cert-runtime: ## Run runtime certification (full)
-	$(GO) run ./cmd/m conformance run core --json
+	$(GO) run ./cmd/m conformance run runtime --json
 
 .PHONY: cert-runtime-local
 cert-runtime-local: ## Run runtime certification (fast subset)
-	$(GO) run ./cmd/m conformance run core --filter fast --json
+	$(GO) run ./cmd/m conformance run runtime --filter runtime-failure --json
 
 .PHONY: cert-runtime-report
 cert-runtime-report: ## Run runtime certification with JSON report
 	@mkdir -p $(REPORTS_DIR)
-	$(GO) run ./cmd/m conformance run core --json > $(REPORTS_DIR)/core-report.json
+	$(GO) run ./cmd/m conformance run runtime --json > $(REPORTS_DIR)/runtime-report.json
 
 .PHONY: cert-check
 cert-check: ## Verify certification consistency (no external tools)
 	$(GO) test ./internal/conformance/... -count=1
 	$(GO) test ./tests/conformance/runner/... -count=1
-	$(GO) run ./cmd/m conformance run core --filter fast --json >/dev/null
+	$(GO) run ./cmd/m conformance run runtime --filter runtime-failure --json >/dev/null
+	$(GO) test ./internal/archcheck/... -count=1 -run TestVersionDrift
 
 # Legacy certification aliases (preserved for compatibility).
 .PHONY: core-cert
@@ -564,7 +574,7 @@ check-runtime-assets: assets-check ## [alias] Verify runtime asset manifest
 .PHONY: help info doctor setup tools verify-tools
 .PHONY: fmt fmt-check generate generate-check assets assets-check plans plans-check
 .PHONY: build build-m build-mx build-all install clean-build
-.PHONY: test test-short test-unit test-integration test-e2e
+.PHONY: test test-short test-unit test-integration test-e2e test-crash
 .PHONY: test-runtime test-transform test-cli test-runner test-workspace
 .PHONY: test-race test-all
 .PHONY: vet lint diff-check staticcheck quality arch-check docs-check fixtures-check crash-shards-check
@@ -576,3 +586,167 @@ check-runtime-assets: assets-check ## [alias] Verify runtime asset manifest
 .PHONY: tidy clean clean-cache clean-reports clean-all
 .PHONY: race fuzz-smoke vuln conformance allowlist install-dev uninstall-dev
 .PHONY: update-runtime-assets check-runtime-assets
+.PHONY: cmd-showcase
+
+# ── Command showcase ────────────────────────────────────────────────────
+
+SHOWCASE_DIR := $(ROOT)bin/showcase
+
+# Banner prints a section header for one command.
+define showcase_banner
+	@echo ''
+	@echo '══════════════════════════════════════════════════════════════════'
+	@echo '  $(1)'
+	@echo '══════════════════════════════════════════════════════════════════'
+endef
+
+cmd-showcase: install-dev ## Print output of every m and mx command
+	@echo '=== MewJS command showcase ==='
+	@echo ''
+	@mkdir -p $(SHOWCASE_DIR)
+	@echo '{"name":"showcase","private":true}' > $(SHOWCASE_DIR)/package.json
+	# ── m standalone commands ──
+	$(call showcase_banner,m version)
+	@cd $(SHOWCASE_DIR) && m version 2>&1 || true
+	$(call showcase_banner,m features)
+	@cd $(SHOWCASE_DIR) && m features --format table 2>&1 || true
+	$(call showcase_banner,m completion bash)
+	@cd $(SHOWCASE_DIR) && m completion bash 2>&1 | head -8 || true
+	$(call showcase_banner,m doctor)
+	@cd $(SHOWCASE_DIR) && m doctor 2>&1 || true
+	# ── m project inspection ──
+	$(call showcase_banner,m pkg)
+	@cd $(SHOWCASE_DIR) && m pkg 2>&1 || true
+	$(call showcase_banner,m project info)
+	@cd $(SHOWCASE_DIR) && m project info 2>&1 || true
+	$(call showcase_banner,m ls)
+	@cd $(SHOWCASE_DIR) && m ls 2>&1 || true
+	$(call showcase_banner,m outdated)
+	@cd $(SHOWCASE_DIR) && m outdated 2>&1 || true
+	$(call showcase_banner,m config get)
+	@cd $(SHOWCASE_DIR) && m config get ui.theme 2>&1 || true
+	$(call showcase_banner,m config list)
+	@cd $(SHOWCASE_DIR) && m config list 2>&1 || true
+	$(call showcase_banner,m config view)
+	@cd $(SHOWCASE_DIR) && m config view 2>&1 || true
+	# ── m plan (dry-run) ──
+	$(call showcase_banner,m plan)
+	@cd $(SHOWCASE_DIR) && m plan 2>&1 || true
+	# ── m lockfile ──
+	$(call showcase_banner,m lock format)
+	@cd $(SHOWCASE_DIR) && m lock format 2>&1 || true
+	$(call showcase_banner,m lock validate)
+	@cd $(SHOWCASE_DIR) && m lock validate 2>&1 || true
+	# ── m resolve (needs a dependency to resolve) ──
+	$(call showcase_banner,m resolve --help)
+	@m resolve --help 2>&1 || true
+	# ── m history / snapshot ──
+	$(call showcase_banner,m history)
+	@cd $(SHOWCASE_DIR) && m history 2>&1 || true
+	$(call showcase_banner,m snapshot list)
+	@cd $(SHOWCASE_DIR) && m snapshot list 2>&1 || true
+	# ── m audit / policy / verify ──
+	$(call showcase_banner,m audit)
+	@cd $(SHOWCASE_DIR) && m audit 2>&1 || true
+	$(call showcase_banner,m policy check)
+	@cd $(SHOWCASE_DIR) && m policy check 2>&1 || true
+	$(call showcase_banner,m verify --help)
+	@m verify --help 2>&1 || true
+	$(call showcase_banner,m sbom)
+	@cd $(SHOWCASE_DIR) && m sbom 2>&1 || true
+	# ── m registry / view ──
+	$(call showcase_banner,m view --help)
+	@m view --help 2>&1 || true
+	$(call showcase_banner,m registry)
+	@cd $(SHOWCASE_DIR) && m registry 2>&1 || true
+	# ── m store ──
+	$(call showcase_banner,m store status)
+	@cd $(SHOWCASE_DIR) && m store status 2>&1 || true
+	$(call showcase_banner,m store path)
+	@cd $(SHOWCASE_DIR) && m store path 2>&1 || true
+	# ── m cache ──
+	$(call showcase_banner,m cache dir)
+	@cd $(SHOWCASE_DIR) && m cache dir 2>&1 || true
+	$(call showcase_banner,m cache verify)
+	@cd $(SHOWCASE_DIR) && m cache verify 2>&1 || true
+	# ── m env ──
+	$(call showcase_banner,m env inspect)
+	@cd $(SHOWCASE_DIR) && m env inspect 2>&1 || true
+	# ── m explain / diff ──
+	$(call showcase_banner,m explain --help)
+	@m explain --help 2>&1 || true
+	$(call showcase_banner,m diff --help)
+	@m diff --help 2>&1 || true
+	# ── m builds ──
+	$(call showcase_banner,m builds)
+	@cd $(SHOWCASE_DIR) && m builds 2>&1 || true
+	# ── m development ──
+	$(call showcase_banner,m development filesystem)
+	@cd $(SHOWCASE_DIR) && m development filesystem 2>&1 || true
+	# ── m remaining commands (--help) ──
+	$(call showcase_banner,m init --help)
+	@m init --help 2>&1 || true
+	$(call showcase_banner,m install --help)
+	@m install --help 2>&1 || true
+	$(call showcase_banner,m add --help)
+	@m add --help 2>&1 || true
+	$(call showcase_banner,m remove --help)
+	@m remove --help 2>&1 || true
+	$(call showcase_banner,m ci --help)
+	@m ci --help 2>&1 || true
+	$(call showcase_banner,m update --help)
+	@m update --help 2>&1 || true
+	$(call showcase_banner,m run --help)
+	@m run --help 2>&1 || true
+	$(call showcase_banner,m exec --help)
+	@m exec --help 2>&1 || true
+	$(call showcase_banner,m link --help)
+	@m link --help 2>&1 || true
+	$(call showcase_banner,m dedupe --help)
+	@m dedupe --help 2>&1 || true
+	$(call showcase_banner,m prune --help)
+	@m prune --help 2>&1 || true
+	$(call showcase_banner,m fetch --help)
+	@m fetch --help 2>&1 || true
+	$(call showcase_banner,m patch --help)
+	@m patch --help 2>&1 || true
+	$(call showcase_banner,m publish --help)
+	@m publish --help 2>&1 || true
+	$(call showcase_banner,m pack --help)
+	@m pack --help 2>&1 || true
+	$(call showcase_banner,m capsule --help)
+	@m capsule --help 2>&1 || true
+	$(call showcase_banner,m transform --help)
+	@m transform --help 2>&1 || true
+	$(call showcase_banner,m node-args --help)
+	@m node-args --help 2>&1 || true
+	$(call showcase_banner,m approve-builds --help)
+	@m approve-builds --help 2>&1 || true
+	$(call showcase_banner,m trust --help)
+	@m trust --help 2>&1 || true
+	$(call showcase_banner,m recover --help)
+	@m recover --help 2>&1 || true
+	$(call showcase_banner,m rollback --help)
+	@m rollback --help 2>&1 || true
+	$(call showcase_banner,m benchmark --help)
+	@m benchmark --help 2>&1 || true
+	$(call showcase_banner,m conformance --help)
+	@m conformance --help 2>&1 || true
+	$(call showcase_banner,m resolve-module --help)
+	@m resolve-module --help 2>&1 || true
+	$(call showcase_banner,m runtime --help)
+	@m runtime --help 2>&1 || true
+	$(call showcase_banner,m watch --help)
+	@m watch --help 2>&1 || true
+	# ── mx commands ──
+	$(call showcase_banner,mx version)
+	@mx version 2>&1 || true
+	$(call showcase_banner,mx cache --help)
+	@mx cache --help 2>&1 || true
+	$(call showcase_banner,mx completion bash)
+	@mx completion bash 2>&1 | head -6 || true
+	@echo ''
+	@echo '══════════════════════════════════════════════════════════════════'
+	@echo '  showcase complete'
+	@echo '══════════════════════════════════════════════════════════════════'
+	@rm -rf $(SHOWCASE_DIR)

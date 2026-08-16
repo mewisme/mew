@@ -33,6 +33,48 @@ flowchart LR
   cmp --> ref[ReferencePM]
 ```
 
+## Adaptive test execution
+
+`tools/testexec` is the canonical Go test orchestrator. It provides adaptive
+parallelism for local development and CI:
+
+- **Automatic worker count** adapts to available CPUs and workload type
+- **Process-level sharding** for heavy packages (integration, app, transaction)
+- **Test binary reuse** via `go test -c` + `-test.run` for sharded packages
+- **Deterministic round-robin** assignment; LPT scheduling when timing data available
+- **Isolated environments** per worker (HOME, XDG, MEW_* vars in temp dirs)
+
+### Worker count
+
+| Mode | Behavior |
+|---|---|
+| `auto` (default) | unit=NCPU, integration≤4, crash≤3, race≤2 |
+| `1` | Serial execution |
+| `N` | Explicit worker count |
+
+Override via Make: `make test TESTEXEC_WORKERS=2` or env: `TESTEXEC_WORKERS=2`.
+
+Direct use: `go run ./tools/testexec [-workers N] [-short] [-race] [-tags TAGS] [packages...]`.
+
+### Per-worker CPU budget
+
+Each worker gets `GOMAXPROCS = floor(logicalCPUs / workers)`, minimum 1.
+This prevents N child processes each scheduling as though they own all CPUs.
+
+### Heavy package sharding
+
+Packages classified as heavy (`tests/integration`, `tests/conformance`,
+`internal/app`, `internal/transaction`) use process-level sharding:
+compile test binary once with `go test -c`, split discovered test functions
+across workers, run each subset with `-test.run` in an isolated process.
+
+Light packages run normally via `go test -p N`.
+
+### Serial mode
+
+`TESTEXEC_WORKERS=1` runs all packages serially (one `go test` process).
+Useful for debugging and low-resource machines. Same test coverage as auto mode.
+
 ## Clean-home contract
 
 `testkit.CleanEnv` / `TempHome` set:

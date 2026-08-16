@@ -308,10 +308,17 @@ func runnerFailResult(suite RunnerSuite) string {
 }
 
 func runnerOverallResult(suites []RunnerSuiteResult) string {
+	if len(suites) == 0 {
+		return RunnerResultFail
+	}
 	anyFail := false
 	anyProbeFail := false
 	allProbeOrPass := true
+	hasRequired := false
 	for _, s := range suites {
+		if s.Required {
+			hasRequired = true
+		}
 		switch s.Result {
 		case RunnerResultFail, RunnerResultTimeout, RunnerResultProbeFail:
 			anyFail = true
@@ -322,9 +329,15 @@ func runnerOverallResult(suites []RunnerSuiteResult) string {
 		default:
 			allProbeOrPass = false
 		}
-		if s.Required && s.Result != RunnerResultPass && s.Result != RunnerResultPassWithWaiver && s.Result != RunnerResultNotApplicable && s.Result != RunnerResultProbeSkip && s.Result != RunnerResultSkip {
+		if s.Required && s.Result != RunnerResultPass && s.Result != RunnerResultPassWithWaiver && s.Result != RunnerResultNotApplicable {
+			if s.Probe && s.Result == RunnerResultProbeSkip {
+				continue
+			}
 			anyFail = true
 		}
+	}
+	if !hasRequired {
+		return RunnerResultFail
 	}
 	if anyFail && !anyProbeFail {
 		return RunnerResultFail

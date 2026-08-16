@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	lipgloss "charm.land/lipgloss/v2"
+	fc "github.com/fatih/color"
 )
 
 type plainRenderer struct {
@@ -48,7 +48,7 @@ func (r *plainRenderer) Notice(n Notice) string {
 }
 
 func (r *plainRenderer) Hint(h Hint) string {
-	arrow := r.settings.Symbols.Arrow
+	arrow := RenderSymbolRole(r.settings.Symbols, Theme{}, RoleActionArrow, false)
 	if arrow == "" {
 		return h.Message
 	}
@@ -89,6 +89,10 @@ func (r *plainRenderer) PackageDeltas(deltas []PackageDelta) string {
 	return formatPackageDeltas(deltas, r.settings, false, Theme{})
 }
 
+func (r *plainRenderer) SpecifierDeltas(deltas []SpecifierDelta) string {
+	return formatSpecifierDeltas(deltas, r.settings, false, Theme{})
+}
+
 func (r *plainRenderer) Table(m TableModel) string {
 	return formatTable(m, r.settings, false, Theme{})
 }
@@ -98,6 +102,22 @@ func (r *plainRenderer) Error(view ErrorView) string {
 }
 
 func (r *plainRenderer) PlainText(s string) string { return s }
+
+func (r *plainRenderer) Label(text string) string {
+	return text // plain mode: no styling
+}
+
+func (r *plainRenderer) Symbol(st Status) string {
+	return statusSymbol(r.settings.Symbols, st)
+}
+
+func (r *plainRenderer) SymbolRole(role SymbolRole) string {
+	return RenderSymbolRole(r.settings.Symbols, Theme{}, role, false)
+}
+
+func (r *plainRenderer) StyledText(text string, kind ValueKind) string {
+	return styleValue(text, kind, false, Theme{})
+}
 
 func statusSymbol(s Symbols, st Status) string {
 	switch st {
@@ -109,6 +129,14 @@ func statusSymbol(s Symbols, st Status) string {
 		return s.Error
 	case StatusInfo:
 		return s.Info
+	case StatusPending:
+		return s.Pending
+	case StatusRunning:
+		return s.Running
+	case StatusSkipped:
+		return s.Skipped
+	case StatusCancelled:
+		return s.Warning // cancellation uses warning glyph
 	default:
 		return ""
 	}
@@ -222,7 +250,7 @@ func formatPackageDeltasWithOptions(deltas []PackageDelta, settings EffectiveSet
 	}
 
 	kindNames := []string{"Added", "Updated", "Removed"}
-	kindThemes := []lipgloss.Style{theme.Added, theme.Updated, theme.Removed}
+	kindBoldColors := []*fc.Color{theme.AddedBold, theme.UpdatedBold, theme.RemovedBold}
 	var parts []string
 	for i, group := range groups {
 		if len(group) == 0 {
@@ -230,8 +258,7 @@ func formatPackageDeltasWithOptions(deltas []PackageDelta, settings EffectiveSet
 		}
 		heading := kindNames[i]
 		if color {
-			heading = applyStyle(kindThemes[i], heading, true)
-			heading = lipgloss.NewStyle().Inherit(kindThemes[i]).Bold(true).Render(heading)
+			heading = applyStyle(kindBoldColors[i], heading, true)
 		}
 		body := formatFlatPackageDeltas(group, settings, color, theme)
 		parts = append(parts, heading+"\n"+body)
@@ -245,10 +272,7 @@ func formatPackageDeltasWithOptions(deltas []PackageDelta, settings EffectiveSet
 }
 
 func formatDeltaTruncationNotice(omitted int, color bool, theme Theme, settings EffectiveSettings) string {
-	arrow := "→"
-	if color {
-		arrow = applyStyle(theme.Muted, arrow, true)
-	}
+	arrow := RenderSymbolRole(settings.Symbols, theme, RoleStructuralArrow, color)
 	msg := fmt.Sprintf("%s %d additional package changes are not shown.", arrow, omitted)
 	msg += "\n  Run `" + settings.BinName() + " plan` for the complete mutation plan."
 	if color {
@@ -281,20 +305,11 @@ func formatFlatPackageDeltas(deltas []PackageDelta, settings EffectiveSettings, 
 		var mark string
 		switch d.Kind {
 		case DeltaAdded:
-			mark = sym.Added
-			if color {
-				mark = applyStyle(theme.Added, mark, true)
-			}
+			mark = RenderSymbolRole(sym, theme, RoleAdded, color)
 		case DeltaRemoved:
-			mark = sym.Removed
-			if color {
-				mark = applyStyle(theme.Removed, mark, true)
-			}
+			mark = RenderSymbolRole(sym, theme, RoleRemoved, color)
 		default:
-			mark = "~"
-			if color {
-				mark = applyStyle(theme.Updated, mark, true)
-			}
+			mark = RenderSymbolRole(sym, theme, RoleUpdated, color)
 		}
 		b.WriteString(mark)
 		b.WriteByte(' ')
@@ -328,10 +343,7 @@ func formatFlatPackageDeltas(deltas []PackageDelta, settings EffectiveSettings, 
 			}
 			b.WriteString(from)
 			b.WriteByte(' ')
-			arrow := sym.Arrow
-			if color {
-				arrow = applyStyle(theme.Muted, arrow, true)
-			}
+			arrow := RenderSymbolRole(sym, theme, RoleStructuralArrow, color)
 			b.WriteString(arrow)
 			b.WriteByte(' ')
 			b.WriteString(to)
@@ -341,6 +353,50 @@ func formatFlatPackageDeltas(deltas []PackageDelta, settings EffectiveSettings, 
 				ver = applyStyle(theme.Version, ver, true)
 			}
 			b.WriteString(ver)
+		}
+	}
+	return b.String()
+}
+
+func formatSpecifierDeltas(deltas []SpecifierDelta, settings EffectiveSettings, color bool, theme Theme) string {
+	if len(deltas) == 0 {
+		return ""
+	}
+	sym := settings.Symbols
+	var b strings.Builder
+	for i, d := range deltas {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		importer := d.Importer
+		if importer == "" {
+			importer = "."
+		}
+		kind := d.Kind
+		if kind != "" {
+			kind = " " + kind
+		}
+		updated := RenderSymbolRole(sym, theme, RoleUpdated, color)
+		b.WriteString(updated)
+		b.WriteByte(' ')
+		b.WriteString(importer)
+		b.WriteByte(' ')
+		b.WriteString(d.Name)
+		b.WriteString(kind)
+		b.WriteString(": ")
+		switch {
+		case d.Before == "" && d.After != "":
+			b.WriteString(RenderSymbolRole(sym, theme, RoleAdded, color))
+			b.WriteString(d.After)
+		case d.Before != "" && d.After == "":
+			b.WriteString(RenderSymbolRole(sym, theme, RoleRemoved, color))
+			b.WriteString(d.Before)
+		default:
+			b.WriteString(d.Before)
+			b.WriteByte(' ')
+			b.WriteString(RenderSymbolRole(sym, theme, RoleStructuralArrow, color))
+			b.WriteByte(' ')
+			b.WriteString(d.After)
 		}
 	}
 	return b.String()

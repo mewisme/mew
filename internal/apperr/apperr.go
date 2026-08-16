@@ -60,6 +60,15 @@ const (
 	TransformUnavailable     Code = "ERR_M_TRANSFORM_UNAVAILABLE"
 	TransformCacheCorrupt    Code = "ERR_M_TRANSFORM_CACHE_CORRUPT"
 	TransformEngine          Code = "ERR_M_TRANSFORM_ENGINE"
+	// Env file error codes (0054).
+	EnvFileNotFound Code = "ERR_M_ENV_FILE_NOT_FOUND"
+	EnvFileRead     Code = "ERR_M_ENV_FILE_READ"
+	EnvFileParse    Code = "ERR_M_ENV_FILE_PARSE"
+	// Inspector error codes (0056).
+	InspectorBind Code = "ERR_M_INSPECTOR_BIND"
+	InspectorPort Code = "ERR_M_INSPECTOR_PORT"
+	InspectorHost Code = "ERR_M_INSPECTOR_HOST"
+	InspectorDup  Code = "ERR_M_INSPECTOR_DUPLICATE"
 )
 
 // registry maps every published code to a process exit status.
@@ -113,6 +122,13 @@ var registry = map[Code]int{
 	TransformUnavailable:     1,
 	TransformCacheCorrupt:    1,
 	TransformEngine:          1,
+	EnvFileNotFound:          1,
+	EnvFileRead:              1,
+	EnvFileParse:             1,
+	InspectorBind:            1,
+	InspectorPort:            1,
+	InspectorHost:            1,
+	InspectorDup:             1,
 }
 
 // AllCodes returns registered codes in a stable order for docs and tests.
@@ -131,6 +147,8 @@ func AllCodes() []Code {
 		TransformProtocolVersion, TransformAuth, TransformFrameSize,
 		TransformTimeout, TransformCancelled, TransformUnavailable,
 		TransformCacheCorrupt, TransformEngine,
+		EnvFileNotFound, EnvFileRead, EnvFileParse,
+		InspectorBind, InspectorPort, InspectorHost, InspectorDup,
 	}
 }
 

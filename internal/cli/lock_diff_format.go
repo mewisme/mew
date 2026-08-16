@@ -73,8 +73,18 @@ func formatLockDiffHuman(r presentation.StaticRenderer, diff *lockfile.GraphDiff
 	if len(deltas) > 0 {
 		parts = append(parts, r.PackageDeltas(deltas))
 	}
-	for _, sp := range diff.Specifiers {
-		parts = append(parts, r.PlainText(formatSpecifierDiff(sp)))
+	if len(diff.Specifiers) > 0 {
+		specDeltas := make([]presentation.SpecifierDelta, len(diff.Specifiers))
+		for i, sp := range diff.Specifiers {
+			specDeltas[i] = presentation.SpecifierDelta{
+				Importer: sp.Importer,
+				Name:     sp.Name,
+				Kind:     sp.Kind,
+				Before:   sp.Before,
+				After:    sp.After,
+			}
+		}
+		parts = append(parts, r.SpecifierDeltas(specDeltas))
 	}
 	return strings.Join(parts, "\n")
 }
@@ -98,33 +108,18 @@ func splitLockPkgID(id string) (name, version string) {
 	return name, version
 }
 
-func formatSpecifierDiff(sp lockfile.ImporterSpecifierDiff) string {
-	importer := sp.Importer
-	if importer == "" {
-		importer = "."
-	}
-	kind := sp.Kind
-	if kind != "" {
-		kind = " " + kind
-	}
-	name := sp.Name
-	switch {
-	case sp.Before == "" && sp.After != "":
-		return fmt.Sprintf("~ %s %s%s: +%s", importer, name, kind, sp.After)
-	case sp.Before != "" && sp.After == "":
-		return fmt.Sprintf("~ %s %s%s: -%s", importer, name, kind, sp.Before)
-	default:
-		return fmt.Sprintf("~ %s %s%s: %s -> %s", importer, name, kind, sp.Before, sp.After)
-	}
+// shortDigest truncates a digest with the canonical ellipsis from symbols.
+func shortDigest(digest string, sym presentation.Symbols) string {
+	return shortDigestWith(digest, sym.Ellipsis)
 }
 
-func shortDigest(digest string) string {
+func shortDigestWith(digest string, ellipsis string) string {
 	const prefix = "sha256:"
 	if strings.HasPrefix(digest, prefix) && len(digest) > len(prefix)+12 {
-		return digest[:len(prefix)+12] + "…"
+		return digest[:len(prefix)+12] + ellipsis
 	}
 	if len(digest) > 16 {
-		return digest[:16] + "…"
+		return digest[:16] + ellipsis
 	}
 	return digest
 }

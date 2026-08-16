@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -28,12 +29,14 @@ const (
 
 // RunnerBenchOptions configures m benchmark runner.
 type RunnerBenchOptions struct {
-	Profile RunnerBenchProfile
-	CaseID  string
-	Compare string
-	Output  string
-	Force   bool
-	Samples int
+	Profile    RunnerBenchProfile
+	CaseID     string
+	Compare    string
+	Output     string
+	Force      bool
+	Samples    int
+	Warmup     int
+	TimeoutSec int
 }
 
 // RunnerBenchBaselineV1 is the baseline schema for runner benchmarks.
@@ -44,6 +47,7 @@ type RunnerBenchBaselineV1 struct {
 	Environment    RunnerBenchEnvironment `json:"environment"`
 	RecordedAt     string                 `json:"recordedAt"`
 	Cases          []RunnerBenchCase      `json:"cases"`
+	ThresholdPct   float64                `json:"thresholdPct,omitempty"`
 }
 
 // RunnerBenchEnvironment records host metadata for baselines.
@@ -53,15 +57,19 @@ type RunnerBenchEnvironment struct {
 	MachineClass string `json:"machineClass"`
 	GoVersion    string `json:"goVersion"`
 	NodeVersion  string `json:"nodeVersion"`
+	Commit       string `json:"commit,omitempty"`
+	LogicalCPUs  int    `json:"logicalCpus"`
 }
 
 // RunnerBenchCase is one benchmark measurement set.
 type RunnerBenchCase struct {
-	ID         string `json:"id"`
-	CacheState string `json:"cacheState"`
-	Samples    int    `json:"samples"`
-	MedianNs   int64  `json:"medianNs"`
-	P95Ns      int64  `json:"p95Ns"`
+	ID           string  `json:"id"`
+	CacheState   string  `json:"cacheState"`
+	Samples      int     `json:"samples"`
+	RawSamplesNs []int64 `json:"rawSamplesNs"`
+	MedianNs     int64   `json:"medianNs"`
+	P95Ns        int64   `json:"p95Ns"`
+	Units        string  `json:"units"`
 }
 
 // RunnerBenchResult is the JSON output for m benchmark runner.
@@ -72,15 +80,26 @@ type RunnerBenchResult struct {
 	CommandVersion string                 `json:"commandVersion"`
 	Environment    RunnerBenchEnvironment `json:"environment"`
 	RecordedAt     string                 `json:"recordedAt"`
+	WarmupSamples  int                    `json:"warmupSamples"`
 	Cases          []RunnerBenchCase      `json:"cases"`
 	Compare        *RunnerBenchCompare    `json:"compare,omitempty"`
 }
 
 // RunnerBenchCompare records baseline comparison outcome.
 type RunnerBenchCompare struct {
-	Status   string `json:"status"`
-	Baseline string `json:"baseline,omitempty"`
-	Message  string `json:"message,omitempty"`
+	Status    string                     `json:"status"`
+	Baseline  string                     `json:"baseline,omitempty"`
+	Message   string                     `json:"message,omitempty"`
+	Threshold float64                    `json:"thresholdPct,omitempty"`
+	Details   []RunnerBenchCompareDetail `json:"details,omitempty"`
+}
+
+type RunnerBenchCompareDetail struct {
+	CaseID           string  `json:"caseId"`
+	CurrentMedianNs  int64   `json:"currentMedianNs"`
+	BaselineMedianNs int64   `json:"baselineMedianNs"`
+	DeltaPct         float64 `json:"deltaPct"`
+	Verdict          string  `json:"verdict"`
 }
 
 // BenchRunner executes runner smoke/full benchmarks without public registry access.
@@ -99,8 +118,22 @@ func BenchRunner(ctx context.Context, ac *Context, opts RunnerBenchOptions) (Run
 		return RunnerBenchResult{}, apperr.New(apperr.Usage, "app.bench.runner", "", "no benchmark cases selected")
 	}
 	samples := opts.Samples
-	if samples <= 0 {
+	if samples < 0 {
+		return RunnerBenchResult{}, apperr.New(apperr.Usage, "app.bench.runner", "", "samples must be >= 0")
+	}
+	if samples == 0 {
 		samples = 5
+	}
+	warmup := opts.Warmup
+	if warmup < 0 {
+		return RunnerBenchResult{}, apperr.New(apperr.Usage, "app.bench.runner", "", "warmup must be >= 0")
+	}
+	if warmup == 0 {
+		warmup = 1
+	}
+	timeout := opts.TimeoutSec
+	if timeout <= 0 {
+		timeout = 120
 	}
 	repoRoot, err := conformance.RepoRootFromModule("")
 	if err != nil {
@@ -117,17 +150,28 @@ func BenchRunner(ctx context.Context, ac *Context, opts RunnerBenchOptions) (Run
 	}
 	measured := make([]RunnerBenchCase, 0, len(cases))
 	for _, c := range cases {
-		ns, err := measureRunnerCase(ctx, fixtureRoot, c.ID, samples)
+		raw, err := measureRunnerCase(ctx, fixtureRoot, c.ID, warmup+samples, time.Duration(timeout)*time.Second)
 		if err != nil {
 			return RunnerBenchResult{}, err
 		}
-		sort.Slice(ns, func(i, j int) bool { return ns[i] < ns[j] })
+		if len(raw) < warmup+samples {
+			return RunnerBenchResult{}, apperr.New(apperr.Internal, "app.bench.runner", c.ID,
+				fmt.Sprintf("expected %d samples, got %d", warmup+samples, len(raw)))
+		}
+		warmupRaw := raw[:warmup]
+		sampleRaw := raw[warmup:]
+		sort.Slice(sampleRaw, func(i, j int) bool { return sampleRaw[i] < sampleRaw[j] })
+		med := sampleRaw[len(sampleRaw)/2]
+		p95 := sampleRaw[int(float64(len(sampleRaw)-1)*0.95)]
+		_ = warmupRaw
 		measured = append(measured, RunnerBenchCase{
-			ID:         c.ID,
-			CacheState: c.CacheState,
-			Samples:    len(ns),
-			MedianNs:   ns[len(ns)/2],
-			P95Ns:      ns[int(float64(len(ns)-1)*0.95)],
+			ID:           c.ID,
+			CacheState:   c.CacheState,
+			Samples:      len(sampleRaw),
+			RawSamplesNs: append([]int64(nil), sampleRaw...),
+			MedianNs:     med,
+			P95Ns:        p95,
+			Units:        "ns",
 		})
 	}
 	result := RunnerBenchResult{
@@ -135,8 +179,9 @@ func BenchRunner(ctx context.Context, ac *Context, opts RunnerBenchOptions) (Run
 		Profile:        string(opts.Profile),
 		CaseID:         opts.CaseID,
 		CommandVersion: runnerBenchCommandVersion,
-		Environment:    runnerBenchEnvironment(),
+		Environment:    runnerBenchEnvironment(ac.Commit),
 		RecordedAt:     time.Now().UTC().Format(time.RFC3339),
+		WarmupSamples:  warmup,
 		Cases:          measured,
 	}
 	if opts.Compare != "" {
@@ -182,7 +227,7 @@ func runnerBenchCases(opts RunnerBenchOptions) []RunnerBenchCase {
 	}
 }
 
-func measureRunnerCase(ctx context.Context, fixtureRoot, caseID string, samples int) ([]int64, error) {
+func measureRunnerCase(ctx context.Context, fixtureRoot, caseID string, totalIterations int, timeout time.Duration) ([]int64, error) {
 	if _, err := exec.LookPath("node"); err != nil {
 		return nil, apperr.Wrap(apperr.NotFound, "app.bench.runner", "node", err)
 	}
@@ -190,20 +235,32 @@ func measureRunnerCase(ctx context.Context, fixtureRoot, caseID string, samples 
 	if err != nil {
 		return nil, err
 	}
-	out := make([]int64, 0, samples)
-	for i := 0; i < samples; i++ {
+	out := make([]int64, 0, totalIterations)
+	for i := 0; i < totalIterations; i++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		iterCtx, cancel := context.WithTimeout(ctx, timeout)
 		start := time.Now()
-		cmd := exec.CommandContext(ctx, "go", "run", filepath.Join(repoRoot, "cmd", "m"),
+		cmd := exec.CommandContext(iterCtx, "go", "run", filepath.Join(repoRoot, "cmd", "m"),
 			"--cwd", fixtureRoot, "--output", "silent", "run", "dev")
 		cmd.Dir = repoRoot
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-		if err := cmd.Run(); err != nil {
+		err := cmd.Run()
+		cancel()
+		elapsed := time.Since(start).Nanoseconds()
+		if err != nil {
+			if iterCtx.Err() == context.DeadlineExceeded {
+				return nil, apperr.New(apperr.Internal, "app.bench.runner", caseID,
+					fmt.Sprintf("iteration %d timed out after %v", i, timeout))
+			}
 			return nil, apperr.Wrap(apperr.Internal, "app.bench.runner", caseID, err)
 		}
-		out = append(out, time.Since(start).Nanoseconds())
+		if elapsed <= 0 {
+			return nil, apperr.New(apperr.Internal, "app.bench.runner", caseID,
+				fmt.Sprintf("invalid elapsed duration %d ns at iteration %d", elapsed, i))
+		}
+		out = append(out, elapsed)
 	}
 	return out, nil
 }
@@ -239,7 +296,7 @@ func copyDir(src, dst string) error {
 	})
 }
 
-func runnerBenchEnvironment() RunnerBenchEnvironment {
+func runnerBenchEnvironment(commit string) RunnerBenchEnvironment {
 	nodeVer := ""
 	if path, err := exec.LookPath("node"); err == nil {
 		cmd := exec.Command("node", "-v")
@@ -254,6 +311,8 @@ func runnerBenchEnvironment() RunnerBenchEnvironment {
 		MachineClass: runtime.GOARCH,
 		GoVersion:    runtime.Version(),
 		NodeVersion:  nodeVer,
+		Commit:       commit,
+		LogicalCPUs:  runtime.NumCPU(),
 	}
 }
 
@@ -267,9 +326,63 @@ func compareRunnerBaseline(path string, result RunnerBenchResult) (RunnerBenchCo
 		return RunnerBenchCompare{}, apperr.Wrap(apperr.Manifest, "app.bench.runner", path, err)
 	}
 	if baseline.SchemaVersion != 1 || baseline.CommandVersion != runnerBenchCommandVersion {
-		return RunnerBenchCompare{Status: "not-comparable", Baseline: path, Message: "incompatible baseline schema or command version"}, nil
+		return RunnerBenchCompare{}, apperr.New(apperr.Manifest, "app.bench.runner", path,
+			"incompatible baseline schema or command version")
 	}
-	return RunnerBenchCompare{Status: "comparable", Baseline: path}, nil
+	if baseline.Environment.OS != "" && !strings.EqualFold(baseline.Environment.OS, result.Environment.OS) {
+		return RunnerBenchCompare{}, apperr.New(apperr.Manifest, "app.bench.runner", path,
+			fmt.Sprintf("baseline OS %q differs from current %q", baseline.Environment.OS, result.Environment.OS))
+	}
+	if baseline.Environment.Arch != "" && !strings.EqualFold(baseline.Environment.Arch, result.Environment.Arch) {
+		return RunnerBenchCompare{}, apperr.New(apperr.Manifest, "app.bench.runner", path,
+			fmt.Sprintf("baseline arch %q differs from current %q", baseline.Environment.Arch, result.Environment.Arch))
+	}
+	threshold := baseline.ThresholdPct
+	if threshold <= 0 {
+		threshold = 10.0
+	}
+	baselineByID := make(map[string]RunnerBenchCase, len(baseline.Cases))
+	for _, c := range baseline.Cases {
+		baselineByID[c.ID] = c
+	}
+	var details []RunnerBenchCompareDetail
+	allPass := true
+	for _, cur := range result.Cases {
+		bl, ok := baselineByID[cur.ID]
+		if !ok {
+			return RunnerBenchCompare{}, apperr.New(apperr.Manifest, "app.bench.runner", path,
+				fmt.Sprintf("case %q not found in baseline", cur.ID))
+		}
+		if bl.MedianNs <= 0 {
+			return RunnerBenchCompare{}, apperr.New(apperr.Manifest, "app.bench.runner", path,
+				fmt.Sprintf("baseline case %q has invalid median %d", cur.ID, bl.MedianNs))
+		}
+		deltaPct := float64(cur.MedianNs-bl.MedianNs) / float64(bl.MedianNs) * 100.0
+		verdict := "pass"
+		if deltaPct > threshold {
+			verdict = "regression"
+			allPass = false
+		} else if deltaPct < -threshold {
+			verdict = "improvement"
+		}
+		details = append(details, RunnerBenchCompareDetail{
+			CaseID:           cur.ID,
+			CurrentMedianNs:  cur.MedianNs,
+			BaselineMedianNs: bl.MedianNs,
+			DeltaPct:         deltaPct,
+			Verdict:          verdict,
+		})
+	}
+	status := "pass"
+	if !allPass {
+		status = "regression"
+	}
+	return RunnerBenchCompare{
+		Status:    status,
+		Baseline:  path,
+		Threshold: threshold,
+		Details:   details,
+	}, nil
 }
 
 // EncodeRunnerBenchResultJSON returns indented JSON for a runner benchmark result.

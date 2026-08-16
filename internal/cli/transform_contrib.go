@@ -5,23 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/mewisme/mew/internal/apperr"
 	"github.com/mewisme/mew/internal/config"
 	"github.com/mewisme/mew/internal/runtime"
 	"github.com/mewisme/mew/internal/transform"
 )
-
-// isTypeScriptFile reports whether path has a .ts/.mts/.cts extension.
-func isTypeScriptFile(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".ts", ".mts", ".cts":
-		return true
-	}
-	return false
-}
 
 // buildTransformContribution creates a transform session and returns
 // a LaunchContribution with the service endpoint, token, loader preload,
@@ -95,9 +84,14 @@ func buildTransformContribution(ctx context.Context, cwd, entrypoint string, eff
 
 	// Step 5: Return the launch contribution.
 	extraEnv := sess.EnvOverlay()
+	configDir := ""
+	if configPath != "" {
+		configDir = filepath.Dir(configPath)
+	}
 	extraEnv = append(extraEnv,
 		"MEW_TRANSFORM_OPTIONS="+string(optsJSON),
 		"MEW_TRANSFORM_OPTS_DIGEST="+optsDigest,
+		"MEW_TRANSFORM_CONFIG_DIR="+configDir,
 	)
 
 	return &runtime.LaunchContribution{
@@ -146,6 +140,8 @@ func configErrToCode(kind transform.ConfigErrorKind) apperr.Code {
 		return apperr.TransformConfigExtends
 	case transform.ConfigErrOptionInvalid:
 		return apperr.TransformConfigOption
+	case transform.ConfigErrOptionUnsupported:
+		return apperr.TransformUnsupported
 	default:
 		return apperr.Internal
 	}

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -56,7 +57,9 @@ func runExplainPackage(cmd *cobra.Command, name string, asJSON bool) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(ex)
 	}
-	return resolver.FormatPackageExplanation(ex, cmd.OutOrStdout(), resolver.ColorEnabledForWriter(cmd.OutOrStdout()))
+	g := ownerFlags(cmd.Root())
+	r := g.mustStaticRenderer(cmd)
+	return writeStaticOut(cmd, formatExplainHuman(r, ex))
 }
 
 func newExplainPeerCmd() *cobra.Command {
@@ -121,6 +124,73 @@ func explainEngine(cmd *cobra.Command, ac *app.Context) (*project.Project, *reso
 }
 
 func printConflictTree(cmd *cobra.Command, tree resolver.ConflictTree) error {
-	_, err := fmt.Fprint(cmd.OutOrStdout(), resolver.FormatConflictTree(tree))
-	return err
+	g := ownerFlags(cmd.Root())
+	r := g.mustStaticRenderer(cmd)
+	return writeStaticOut(cmd, formatExplainConflictTree(r, tree))
+}
+
+func formatExplainHuman(r presentation.StaticRenderer, ex *resolver.PackageExplanation) string {
+	if ex == nil {
+		return ""
+	}
+	settings := r.Settings()
+	sym := settings.Symbols
+
+	var b strings.Builder
+	b.WriteString(r.StyledText(ex.Package, presentation.ValuePackage))
+	b.WriteByte('\n')
+
+	if ex.Conflict != nil {
+		b.WriteString(formatExplainConflictTree(r, *ex.Conflict))
+		return b.String()
+	}
+
+	for _, d := range ex.Decisions {
+		arrow := r.SymbolRole(presentation.RoleStructuralArrow)
+		line := fmt.Sprintf("%s@%s %s %s (%s)",
+			d.Package,
+			d.Requested,
+			arrow,
+			r.StyledText(d.Selected, presentation.ValueVersion),
+			d.Reason,
+		)
+		if detail := resolver.ReasonDetailFor(d.Reason); detail.Text != "" {
+			line += " " + sym.Separator + " " + detail.Text
+			if detail.Code != "" {
+				line += " [" + r.StyledText(detail.Code, presentation.ValueMuted) + "]"
+			}
+		}
+		if len(d.PeerProviders) > 0 {
+			line += fmt.Sprintf(" peerProviders=%v", d.PeerProviders)
+		}
+		if d.OverrideFrom != "" {
+			line += fmt.Sprintf(" override=%q", d.OverrideFrom)
+		}
+		if len(d.Rejected) > 0 {
+			line += fmt.Sprintf(" rejected=%v", d.Rejected)
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+
+	if len(ex.Paths) > 0 {
+		b.WriteString("imported by:\n")
+		for _, p := range ex.Paths {
+			arrow := r.SymbolRole(presentation.RoleStructuralArrow)
+			chain := make([]string, len(p.Chain))
+			for i, name := range p.Chain {
+				chain[i] = r.StyledText(name, presentation.ValuePackage)
+			}
+			b.WriteString("  ")
+			b.WriteString(strings.Join(chain, " "+arrow+" "))
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+func formatExplainConflictTree(r presentation.StaticRenderer, tree resolver.ConflictTree) string {
+	arrow := r.SymbolRole(presentation.RoleStructuralArrow)
+	sep := r.Settings().Symbols.Separator
+	return resolver.FormatConflictTreeWithSymbols(tree, arrow, sep)
 }

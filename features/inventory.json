@@ -1269,100 +1269,122 @@
       "name": "JSX/TSX",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0052",
-      "tests": []
+      "tests": [
+        "internal/transform/engine_test.go"
+      ]
     },
     {
       "id": "runtime.decorators",
       "name": "legacy and standard decorators",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0052",
-      "tests": []
+      "tests": [
+        "internal/transform/engine_test.go"
+      ]
     },
     {
       "id": "runtime.decorator-metadata",
       "name": "decorator metadata",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0052",
-      "tests": []
+      "tests": [
+        "internal/transform/tsconfig_test.go"
+      ]
     },
     {
       "id": "runtime.tsconfig-paths",
       "name": "tsconfig and path aliases",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0051",
-      "tests": []
+      "tests": [
+        "internal/transform/tsconfig_test.go"
+      ]
     },
     {
       "id": "runtime.sourcemaps",
       "name": "source maps",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0052",
-      "tests": []
+      "tests": [
+        "internal/transform/engine_test.go"
+      ]
     },
     {
       "id": "runtime.loaders",
       "name": "custom loaders and preloads",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0053",
-      "tests": []
+      "tests": [
+        "tests/integration/runtime_e2e_test.go"
+      ]
     },
     {
       "id": "runtime.env-loading",
       "name": "environment auto-loading",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0054",
-      "tests": []
+      "tests": [
+        "internal/dotenv/",
+        "tests/conformance/runtime/env_test.go"
+      ]
     },
     {
       "id": "runtime.workers-storage",
       "name": "workers and Web Storage",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0054",
-      "tests": []
+      "tests": [
+        "tests/conformance/runtime/worker_storage_test.go"
+      ]
     },
     {
       "id": "runtime.watch",
       "name": "watch and automatic restart",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0055",
-      "tests": []
+      "tests": [
+        "internal/watch/"
+      ]
     },
     {
       "id": "runtime.debugger",
       "name": "debugger and inspector",
       "module": "runtime",
       "nub_status": "shipped",
-      "mew_status": "planned",
+      "mew_status": "shipped",
       "compatibility_class": "parity",
       "primary_mvp": "0056",
-      "tests": []
+      "tests": [
+        "internal/runtime/inspect_test.go",
+        "internal/trace/"
+      ]
     },
     {
       "id": "runtime.plain-node",

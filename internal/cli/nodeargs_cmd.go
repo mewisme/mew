@@ -42,6 +42,7 @@ The -- separator is required before the Node flags:
 				NodeV8Args:       v8Args,
 				WorkingDir:       ac.CWD,
 				AugmentationMode: runtime.AugmentDefault,
+				Loaders:          nil, // node-args users pass --experimental-loader via -- separator
 				Stdio: runtime.LaunchStdio{
 					Stdin:  cmd.InOrStdin(),
 					Stdout: cmd.OutOrStdout(),
@@ -49,9 +50,10 @@ The -- separator is required before the Node flags:
 				},
 			}
 
-			// Attach transform session for TypeScript entrypoints
-			// (same as the file-run dispatch path).
-			if isTypeScriptFile(resolved) {
+			// Attach transform session when augmentation is active.
+			// The loader's resolve hook handles extension substitution for all
+			// entrypoints (same as the file-run dispatch path).
+			{
 				contrib, contribErr := buildTransformContribution(cmd.Context(), ac.CWD, resolved, ac.Config)
 				if contribErr != nil {
 					return contribErr
@@ -59,17 +61,7 @@ The -- separator is required before the Node flags:
 				req.Contribution = contrib
 			}
 
-			plan, err := runtime.Plan(cmd.Context(), req, ac.Config)
-			if err != nil {
-				return err
-			}
-			launchErr := runtime.Launch(cmd.Context(), plan, req)
-			// Always run cleanup hook after Node exit, on any outcome.
-			var cleanupErr error
-			if plan != nil && plan.CleanupHook != nil {
-				cleanupErr = plan.CleanupHook()
-			}
-			return runtime.MergeCleanupError(launchErr, cleanupErr)
+			return runtime.PlanAndLaunch(cmd.Context(), req, ac.Config)
 		},
 	}
 	return cmd

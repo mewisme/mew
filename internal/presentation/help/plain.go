@@ -19,11 +19,17 @@ type RenderOptions struct {
 	ThemeMode presentation.ThemeMode
 	// UseColor enables semantic ANSI colors for rich TTY output.
 	UseColor bool
+	// Symbols provides the active glyph set (Unicode or ASCII).
+	Symbols presentation.Symbols
 }
 
 // Render selects plain or rich Markdown rendering.
 func Render(md string, opts RenderOptions) (string, error) {
 	opts.Width = presentation.ClampWidth(opts.Width)
+	// Default to ASCII symbols when none provided (zero-value guard).
+	if opts.Symbols.Bullet == "" {
+		opts.Symbols = presentation.ASCIISymbols
+	}
 	if opts.Plain || opts.Accessible || !opts.UseColor {
 		return RenderPlain(md, opts), nil
 	}
@@ -91,7 +97,7 @@ func RenderPlain(md string, opts RenderOptions) string {
 		}
 		// Horizontal rule.
 		if trim == "---" || trim == "***" || trim == "___" || trim == "- - -" || trim == "* * *" {
-			out = append(out, "----")
+			out = append(out, strings.Repeat(opts.Symbols.Separator, 4))
 			continue
 		}
 		if strings.HasPrefix(trim, "|") && strings.Contains(trim, "|") {
@@ -107,7 +113,7 @@ func RenderPlain(md string, opts RenderOptions) string {
 		}
 		if m := reUL.FindStringSubmatch(line); m != nil {
 			text := formatInline(m[2], opts)
-			out = append(out, wrapPrefixed("  - ", text, width)...)
+			out = append(out, wrapPrefixed("  "+opts.Symbols.Bullet+" ", text, width)...)
 			continue
 		}
 		if m := reOL.FindStringSubmatch(line); m != nil {

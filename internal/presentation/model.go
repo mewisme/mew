@@ -9,6 +9,10 @@ const (
 	StatusWarning
 	StatusError
 	StatusInfo
+	StatusPending
+	StatusRunning
+	StatusSkipped
+	StatusCancelled
 )
 
 // ValueKind selects value styling for key-value rows.
@@ -22,6 +26,24 @@ const (
 	ValueCommand
 	ValueNumber
 	ValueMuted
+)
+
+// SymbolRole is a semantic symbol role for non-status presentation symbols.
+// Status roles (Success, Warning, Error, etc.) use Status + RenderSemanticSymbol.
+// Mutation roles (Added, Updated, Removed), structural roles (Arrow, Bullet,
+// Ellipsis, Placeholder, Separator) use SymbolRole + RenderSymbolRole.
+type SymbolRole int
+
+const (
+	RoleAdded SymbolRole = iota
+	RoleUpdated
+	RoleRemoved
+	RoleActionArrow
+	RoleStructuralArrow
+	RoleBullet
+	RoleEllipsis
+	RolePlaceholder
+	RoleSeparator
 )
 
 // StatusLine is a one-line command outcome.
@@ -91,6 +113,15 @@ type PackageDeltaOptions struct {
 	MaxRows     int // 0 means unlimited.
 }
 
+// SpecifierDelta is one specifier mutation row (e.g. lockfile importer specifier changes).
+type SpecifierDelta struct {
+	Importer string
+	Name     string
+	Kind     string // e.g. "dev", "peer", "" for prod
+	Before   string
+	After    string
+}
+
 // maxSummaryPackageDeltas bounds human delta lists to prevent unbounded output.
 const maxSummaryPackageDeltas = 50
 
@@ -120,10 +151,26 @@ type TableColumn struct {
 	Align    ColumnAlign
 	Truncate TruncatePolicy
 	Primary  bool // first column used as stacked title
+	// CellStyle sets the ValueKind applied to every cell in this column.
+	// ValuePlain (zero) means no semantic styling.
+	CellStyle ValueKind
+}
+
+// StatusCell is a table cell that carries semantic status metadata.
+// When a row provides a StatusCell for a column, the renderer applies
+// the corresponding status styling (success/warning/error/etc.) instead
+// of treating the value as a plain string.
+type StatusCell struct {
+	Text   string
+	Status Status
 }
 
 // TableModel is a borderless table.
 type TableModel struct {
 	Columns []TableColumn
 	Rows    []map[string]string
+	// RowStatuses provides per-cell status metadata. When a row index and
+	// column key have a StatusCell entry, the renderer applies status
+	// styling (success/warning/error/etc.) instead of plain text.
+	RowStatuses []map[string]StatusCell
 }

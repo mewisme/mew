@@ -333,8 +333,8 @@ var keyRegistry = map[string]ConfigKeySpec{
 	// ── Runner ────────────────────────────────────────────────
 	"runner.direct_scripts.enabled": {
 		Key: "runner.direct_scripts.enabled", Group: "Runner", Type: TypeBool,
-		Default:     false,
-		Description: "Enable direct script execution from CLI (experimental)",
+		Default:     true,
+		Description: "Enable direct script execution from CLI",
 		Scopes:      []Scope{ScopeUser, ScopeProject},
 		Commands:    []string{"run"},
 	},

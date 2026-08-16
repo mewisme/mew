@@ -6,8 +6,6 @@ import (
 	"strings"
 	"sync"
 
-	lipgloss "charm.land/lipgloss/v2"
-
 	"github.com/mewisme/mew/internal/diagnostics"
 )
 
@@ -61,7 +59,7 @@ func (p *StaticRichProgressRenderer) OperationStarted(ev diagnostics.OperationSt
 	p.active[ev.ID] = kind
 
 	var b strings.Builder
-	b.WriteString(p.colorSymbol(p.theme.Info, p.symbols.Running))
+	b.WriteString(RenderSemanticSymbol(p.symbols, p.theme, StatusRunning, p.settings.UseColor))
 	b.WriteString(" ")
 	b.WriteString(kind)
 	if ev.Total != nil && *ev.Total > 0 {
@@ -96,19 +94,18 @@ func (p *StaticRichProgressRenderer) OperationCompleted(ev diagnostics.Operation
 	}
 
 	var b strings.Builder
-	var symStyle lipgloss.Style
-	var sym string
+	var st Status
 	switch status {
 	case "ok":
-		symStyle, sym = p.theme.Success, p.symbols.Success
+		st = StatusSuccess
 	case "skipped":
-		symStyle, sym = p.theme.Warning, p.symbols.Skipped
+		st = StatusSkipped
 	case "cancelled":
-		symStyle, sym = p.theme.Warning, p.symbols.Warning
+		st = StatusCancelled
 	default:
-		symStyle, sym = p.theme.Error, p.symbols.Error
+		st = StatusError
 	}
-	b.WriteString(p.colorSymbol(symStyle, sym))
+	b.WriteString(RenderSemanticSymbol(p.symbols, p.theme, st, p.settings.UseColor))
 	b.WriteString(" ")
 	b.WriteString(kind)
 
@@ -127,14 +124,6 @@ func (p *StaticRichProgressRenderer) OperationCompleted(ev diagnostics.Operation
 	})
 }
 
-// colorSymbol applies the lipgloss style to the symbol when color is enabled.
-func (p *StaticRichProgressRenderer) colorSymbol(style lipgloss.Style, sym string) string {
-	if !p.settings.UseColor {
-		return sym
-	}
-	return style.Render(sym)
-}
-
 func (p *StaticRichProgressRenderer) Notice(ev diagnostics.NoticeEvent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -145,17 +134,8 @@ func (p *StaticRichProgressRenderer) Notice(ev diagnostics.NoticeEvent) {
 	if msg == "" {
 		return
 	}
-	var b strings.Builder
-	if p.settings.UseColor {
-		b.WriteString("\x1b[33m")
-	}
-	b.WriteString(p.symbols.Warning)
-	if p.settings.UseColor {
-		b.WriteString("\x1b[0m")
-	}
-	b.WriteString(" ")
-	b.WriteString(msg)
-	p.writeln(b.String())
+	sym := RenderSemanticSymbol(p.symbols, p.theme, StatusWarning, p.settings.UseColor)
+	p.writeln(sym + " " + msg)
 }
 
 func (p *StaticRichProgressRenderer) Suspend() {
@@ -233,14 +213,10 @@ func WriteStaticRichInstallSummary(w io.Writer, settings EffectiveSettings, adde
 	if w == nil {
 		return
 	}
+	theme := NewTheme(settings.ThemeMode)
+	sym := RenderSemanticSymbol(settings.Symbols, theme, StatusSuccess, settings.UseColor)
 	var b strings.Builder
-	if settings.UseColor {
-		b.WriteString("\x1b[32m")
-		b.WriteString(settings.Symbols.Success)
-		b.WriteString("\x1b[0m")
-	} else {
-		b.WriteString(settings.Symbols.Success)
-	}
+	b.WriteString(sym)
 	b.WriteString(" ")
 	fmt.Fprintf(&b, "installed added=%d updated=%d removed=%d", added, updated, removed)
 	if durationMs > 0 {

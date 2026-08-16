@@ -75,50 +75,50 @@ Every new package must expose narrow interfaces, accept `context.Context` for ca
 
 ### Contracts & types
 
-- [ ] Implement .env parser with variable expansion rules
-- [ ] Never mutate global process environment from concurrent Go code
-- [ ] Wire NODE_ENV and --mode interaction documented
-- [ ] Test storage isolation and corruption recovery
+- [x] Implement .env parser with variable expansion rules
+- [x] Never mutate global process environment from concurrent Go code
+- [x] Wire NODE_ENV and --mode interaction documented
+- [x] Test storage isolation and corruption recovery
 
 ### Core logic
 
-- [ ] Implement mode-aware .env* discovery and precedence
-- [ ] Inject runtime state into worker threads and child Node processes
-- [ ] Add environment trace diagnostics with redacted values by default
-- [ ] Document security implications of env expansion
+- [x] Implement mode-aware .env* discovery and precedence
+- [x] Inject runtime state into worker threads and child Node processes
+- [x] Add environment trace diagnostics with redacted values by default
+- [x] Document security implications of env expansion
 
 ### CLI / UX
 
-- [ ] Support explicit --env-file and --no-env-file kill switch
-- [ ] Ensure worker augmentation avoids recursive unrelated services
-- [ ] Test precedence and expansion matrix exhaustively
-- [ ] Benchmark env overlay construction per spawn
+- [x] Support explicit --env-file and --no-env-file kill switch
+- [x] Ensure worker augmentation avoids recursive unrelated services
+- [x] Test precedence and expansion matrix exhaustively
+- [x] Benchmark env overlay construction per spawn
 
 ### Tests & fixtures
 
-- [ ] Define shell environment vs file vs flag precedence
-- [ ] Implement selected Web Storage compatibility APIs
-- [ ] Prepare watch reload hooks for env/tsconfig changes (0055)
+- [x] Define shell environment vs file vs flag precedence
+- [x] Implement selected Web Storage compatibility APIs
+- [x] Prepare watch reload hooks for env/tsconfig changes (0055)
 
 ### Docs & observability
 
-- [ ] Construct per-child environment overlays explicitly in Go
-- [ ] Define storage persistence and isolation policy
-- [ ] Test worker and child-process propagation
+- [x] Construct per-child environment overlays explicitly in Go
+- [x] Define storage persistence and isolation policy
+- [x] Test worker and child-process propagation
 
 ## Test Plan
 
 <!-- ENRICHMENT-TESTS -->
-- [ ] Acceptance: --env-file overrides auto-discovery per documented policy
-- [ ] Acceptance: Child processes receive explicit env overlays; parent env not raced
-- [ ] Acceptance: Workers inherit transform/runtime hooks without recursive services
-- [ ] Acceptance: Env trace redacts secrets by default
-- [ ] Acceptance: Web Storage APIs behave per documented persistence policy
-- [ ] Fixture ready: `fixtures/runtime/env/precedence — shell/file/flag matrix`
-- [ ] Fixture ready: `fixtures/runtime/env/expansion — variable substitution`
-- [ ] Fixture ready: `fixtures/runtime/env/mode — production vs development files`
-- [ ] Fixture ready: `fixtures/runtime/workers — hook propagation`
-- [ ] Fixture ready: `fixtures/runtime/storage — Web Storage isolation`
+- [x] Acceptance: --env-file overrides auto-discovery per documented policy
+- [x] Acceptance: Child processes receive explicit env overlays; parent env not raced
+- [x] Acceptance: Workers inherit transform/runtime hooks without recursive services
+- [x] Acceptance: Env trace redacts secrets by default
+- [x] Acceptance: Web Storage APIs behave per documented persistence policy
+- [x] Fixture ready: `fixtures/runtime/env/precedence — shell/file/flag matrix`
+- [x] Fixture ready: `fixtures/runtime/env/expansion — variable substitution`
+- [x] Fixture ready: `fixtures/runtime/env/mode — production vs development files`
+- [x] Fixture ready: `fixtures/runtime/workers — hook propagation`
+- [x] Fixture ready: `fixtures/runtime/storage — Web Storage isolation`
 
 
 Required test layers:
@@ -154,17 +154,17 @@ Secrets must never be written to logs, lockfiles, snapshots, telemetry, crash re
 
 ## Deliverables
 
-- [ ] Production implementation and public interfaces.
-- [ ] Unit, integration, conformance, and failure-injection tests.
-- [ ] User documentation and migration notes where behavior is public.
-- [ ] Benchmark baseline and diagnostic instrumentation.
+- [x] Production implementation and public interfaces.
+- [x] Unit, integration, conformance, and failure-injection tests.
+- [x] User documentation and migration notes where behavior is public.
+- [x] Benchmark baseline and diagnostic instrumentation.
 
 ## Exit Criteria
 
-- [ ] All required tests pass on supported operating systems.
-- [ ] No unresolved correctness, integrity, or data-loss issue remains.
-- [ ] Public behavior and intentional deviations are documented.
-- [ ] The next dependent MVP can consume stable interfaces without reaching into internals.
+- [x] All required tests pass on supported operating systems.
+- [x] No unresolved correctness, integrity, or data-loss issue remains.
+- [x] Public behavior and intentional deviations are documented.
+- [x] The next dependent MVP can consume stable interfaces without reaching into internals.
 
 
 

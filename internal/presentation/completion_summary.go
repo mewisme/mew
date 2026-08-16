@@ -38,33 +38,33 @@ func RenderCompletionSummary(s CompletionSummary, settings EffectiveSettings) st
 	if name == "" {
 		name = "command"
 	}
-	sym := settings.Symbols
-	status := StatusSuccess
+
+	theme := NewTheme(settings.ThemeMode)
+	st := StatusSuccess
 	verb := "completed"
-	prefix := sym.Success
+
 	if s.Cancelled {
-		status = StatusWarning
+		st = StatusCancelled
 		verb = "cancelled"
-		prefix = sym.Warning
 	} else if s.Failed || s.ExitCode != 0 {
-		status = StatusError
+		st = StatusError
 		verb = "failed"
-		prefix = sym.Error
 	}
-	_ = status
-	var b strings.Builder
-	if prefix != "" {
-		b.WriteString(prefix)
-		b.WriteByte(' ')
-	}
-	b.WriteString(name)
-	b.WriteByte(' ')
-	b.WriteString(verb)
+
+	duration := ""
 	if s.Duration > 0 {
-		b.WriteString(" in ")
-		b.WriteString(FormatDuration(s.Duration))
+		duration = " in " + FormatDuration(s.Duration)
 	}
-	return b.String()
+
+	styledPrefix := RenderSemanticSymbol(settings.Symbols, theme, st, settings.UseColor)
+
+	return fmt.Sprintf(
+		"%s %s %s%s",
+		styledPrefix,
+		name,
+		verb,
+		duration,
+	)
 }
 
 // WriteCompletionSummary writes the summary to stderr, inserting a leading newline

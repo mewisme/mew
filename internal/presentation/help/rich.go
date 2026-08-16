@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	lipgloss "charm.land/lipgloss/v2"
+	"github.com/fatih/color"
 
 	"github.com/mewisme/mew/internal/presentation"
 )
@@ -29,7 +29,7 @@ func RenderRich(md string, opts RenderOptions) (string, error) {
 			return
 		}
 		for _, fl := range fence {
-			out = append(out, theme.Muted.Render("  "+fl))
+			out = append(out, theme.Muted.Sprint("  "+fl))
 		}
 		fence = nil
 	}
@@ -58,12 +58,13 @@ func RenderRich(md string, opts RenderOptions) (string, error) {
 		}
 		// Horizontal rule.
 		if trim == "---" || trim == "***" || trim == "___" || trim == "- - -" || trim == "* * *" {
-			out = append(out, theme.Muted.Render("----"))
+			rule := strings.Repeat(opts.Symbols.Separator, 4)
+			out = append(out, theme.Muted.Sprint(rule))
 			continue
 		}
 		if strings.HasPrefix(trim, "|") && strings.Contains(trim, "|") {
 			for _, r := range renderTableRow(trim, width) {
-				out = append(out, theme.Muted.Render(r))
+				out = append(out, theme.Muted.Sprint(r))
 			}
 			continue
 		}
@@ -76,12 +77,12 @@ func RenderRich(md string, opts RenderOptions) (string, error) {
 		}
 		if m := reUL.FindStringSubmatch(line); m != nil {
 			text := formatInline(m[2], opts)
-			out = append(out, wrapPrefixedStyled("  - ", text, width, theme.Primary, lipgloss.NewStyle())...)
+			out = append(out, wrapPrefixedStyled("  "+opts.Symbols.Bullet+" ", text, width, theme.Primary, nil)...)
 			continue
 		}
 		if m := reOL.FindStringSubmatch(line); m != nil {
 			text := formatInline(m[2], opts)
-			out = append(out, wrapPrefixedStyled("  "+m[1]+". ", text, width, theme.Primary, lipgloss.NewStyle())...)
+			out = append(out, wrapPrefixedStyled("  "+m[1]+". ", text, width, theme.Primary, nil)...)
 			continue
 		}
 		text := formatInlineRich(line, opts, theme)
@@ -92,25 +93,33 @@ func RenderRich(md string, opts RenderOptions) (string, error) {
 }
 
 // wrapPrefixedStyled wraps text with a styled prefix.
-func wrapPrefixedStyled(prefix, text string, width int, prefixStyle, bodyStyle lipgloss.Style) []string {
+// bodyStyle may be nil — continuation lines are then emitted unstyled.
+func wrapPrefixedStyled(prefix, text string, width int, prefixStyle, bodyStyle *color.Color) []string {
 	rawOut := wrapPrefixed(prefix, text, width)
 	if len(rawOut) == 0 {
-		return []string{prefixStyle.Render(prefix)}
+		return []string{prefixStyle.Sprint(prefix)}
 	}
 	out := make([]string, len(rawOut))
 	padLen := presentation.CellWidth(prefix)
 	for i, line := range rawOut {
 		if i == 0 {
 			if padLen < len(line) {
-				out[i] = prefixStyle.Render(line[:padLen]) + bodyStyle.Render(line[padLen:])
+				out[i] = prefixStyle.Sprint(line[:padLen]) + applyMaybe(bodyStyle, line[padLen:])
 			} else {
-				out[i] = prefixStyle.Render(line)
+				out[i] = prefixStyle.Sprint(line)
 			}
 		} else {
-			out[i] = bodyStyle.Render(line)
+			out[i] = applyMaybe(bodyStyle, line)
 		}
 	}
 	return out
+}
+
+func applyMaybe(c *color.Color, s string) string {
+	if c == nil {
+		return s
+	}
+	return c.Sprint(s)
 }
 
 func formatInlineRich(s string, opts RenderOptions, theme presentation.Theme) string {
@@ -121,7 +130,7 @@ func formatInlineRich(s string, opts RenderOptions, theme presentation.Theme) st
 		if len(parts) != 2 {
 			return m
 		}
-		return theme.Code.Render(parts[1])
+		return theme.Code.Sprint(parts[1])
 	})
 	s = reLink.ReplaceAllStringFunc(s, func(m string) string {
 		parts := reLink.FindStringSubmatch(m)
@@ -130,12 +139,12 @@ func formatInlineRich(s string, opts RenderOptions, theme presentation.Theme) st
 		}
 		text, dest := parts[1], parts[2]
 		if opts.Hyperlinks {
-			return osc8(theme.Primary.Render(text), dest)
+			return osc8(theme.Primary.Sprint(text), dest)
 		}
 		if text == dest {
-			return theme.Primary.Render(dest)
+			return theme.Primary.Sprint(dest)
 		}
-		return fmt.Sprintf("%s: %s", theme.Primary.Render(text), theme.Muted.Render(dest))
+		return fmt.Sprintf("%s: %s", theme.Primary.Sprint(text), theme.Muted.Sprint(dest))
 	})
 	return strings.TrimSpace(s)
 }

@@ -1,10 +1,11 @@
-# Schema freeze — PM core (0031)
+# Schema freeze — PM core (0031) + Runtime (0057)
 
 Contract freeze for persistent formats and machine-readable outputs shipped in
-MVPs **0010–0030**. Runner MVPs (**0040+**) depend on these shapes remaining
-backward compatible unless an ADR authorizes a breaking change.
+MVPs **0010–0030** and runtime stabilization (**0050–0057**). Runner MVPs (**0040+**)
+and subsequent MVPs depend on these shapes remaining backward compatible unless
+an ADR authorizes a breaking change.
 
-See also: [`lockfile.md`](lockfile.md), [`core-certification.md`](core-certification.md).
+See also: [`lockfile.md`](lockfile.md), [`core-certification.md`](core-certification.md), [`runtime/protocol-versions.md`](runtime/protocol-versions.md).
 
 ## Frozen artifacts
 
@@ -22,6 +23,13 @@ See also: [`lockfile.md`](lockfile.md), [`core-certification.md`](core-certifica
 | Core conformance report | `schemaVersion: 2` | MVP 0031 (Pass 32) | Additive suite metadata only; breaking shape requires ADR |
 | Install bench baseline | `schemaVersion: 2` | Pass 32 | Regenerate via `m bench install --baseline`; median/p95 fields |
 | Transaction journal | `schemaVersion` in lock doc | MVP 0017 | ADR; recovery must handle prior version |
+| Transform IPC protocol | `ProtocolVersion: 2` | MVP 0057 | ADR; client+server sync; migration path for v2→v3 |
+| Transform cache schema | `CacheSchemaVersion: 1` | MVP 0057 | ADR; stale cache auto-purged on bump |
+| Runtime asset manifest | `schemaVersion: 2`, `bundleVersion: "10"` | MVP 0057 | ADR; per-asset SHA-256 integrity |
+| Trace event schema | `SchemaVersion: 1` | MVP 0057 | ADR; emitter + consumer sync |
+| Conformance report (all matrices) | `ReportSchemaVersion: 2` | MVP 0057 | Additive suite metadata only; breaking shape requires ADR |
+| Web Storage schema | `SCHEMA_VERSION: 1` | MVP 0057 | ADR; stale data auto-purged on bump |
+| Resolve diagnostic schema | `SCHEMA_VERSION: 1` | MVP 0057 | ADR; loader consumer sync |
 
 ## `m.lock` v3 (native)
 
@@ -72,7 +80,8 @@ surface and follow the same freeze from MVP 0031 onward.
 
 ## Non-frozen (explicit)
 
-- Runner and runtime CLI (`m run`, `mx`, loaders) — MVP 0040+
+- Runner CLI (`m run`, `mx`) — MVP 0040+ (runner certification run; individual runner schemas are frozen at v1)
 - Full 0080 differential conformance report schema
 - Live Sigstore attestation verification protocol
 - Advisory feed signature format
+- Runtime launch/plan/environment-prepared schemas — defined in `internal/runner/envexec/`, each frozen at v1; broader runner surface changes require ADR
